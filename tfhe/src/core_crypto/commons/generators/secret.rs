@@ -19,7 +19,9 @@ impl<G: ByteRandomGenerator> SecretRandomGenerator<G> {
         self.0.remaining_bytes()
     }
 
-    pub(crate) fn fill_slice_with_random_uniform_binary<Scalar>(&mut self, slice: &mut [Scalar])
+    // Nikhil: changed visibility from pub(crate) to pub to make it accessible by tfhe/examples/randomness_tracking/lwe_encryption.rs
+    pub fn fill_slice_with_random_uniform_binary<Scalar>(&mut self, slice: &mut [Scalar])
+    // pub(crate) fn fill_slice_with_random_uniform_binary<Scalar>(&mut self, slice: &mut [Scalar])
     where
         Scalar: RandomGenerable<UniformBinary>,
     {

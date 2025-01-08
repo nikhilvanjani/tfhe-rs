@@ -139,7 +139,9 @@ impl<G: ByteRandomGenerator> EncryptionRandomGenerator<G> {
     }
 
     // Fills the slice with random uniform values, using the mask generator
-    pub(crate) fn fill_slice_with_random_uniform_mask_custom_mod<Scalar>(
+    // Nikhil: changed visibility from pub(crate) to pub to make it accessible by tfhe/examples/randomness_tracking/lwe_encryption.rs
+    pub fn fill_slice_with_random_uniform_mask_custom_mod<Scalar>(
+    // pub(crate) fn fill_slice_with_random_uniform_mask_custom_mod<Scalar>(
         &mut self,
         output: &mut [Scalar],
         ciphertext_modulus: CiphertextModulus<Scalar>,
@@ -158,7 +160,9 @@ impl<G: ByteRandomGenerator> EncryptionRandomGenerator<G> {
         self.noise.random_noise_from_distribution(distribution)
     }
 
-    pub(crate) fn random_noise_from_distribution_custom_mod<D, Scalar>(
+    // Nikhil: changed visibility from pub(crate) to pub to make it accessible by tfhe/examples/randomness_tracking/lwe_encryption.rs
+    pub fn random_noise_from_distribution_custom_mod<D, Scalar>(
+    // pub(crate) fn random_noise_from_distribution_custom_mod<D, Scalar>(
         &mut self,
         distribution: D,
         custom_modulus: CiphertextModulus<Scalar>,
