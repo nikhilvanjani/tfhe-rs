@@ -8,6 +8,10 @@
 // #[cfg(feature = "zk-pok")]
 // use rand::Rng;
 
+extern crate tfhe;
+extern crate rayon;
+extern crate pulp;
+
 use tfhe::core_crypto::prelude::*;
 // use tfhe::core_crypto::commons::generators::DeterministicSeeder;
 #[cfg(feature = "zk-pok")]
@@ -19,11 +23,11 @@ use rand::Rng;
 use tfhe::safe_serialization::safe_serialize;
 use tfhe::core_crypto::prelude::slice_algorithms::slice_wrapping_add;
 
-use crate::lwe_encryption::*;
+use crate::deterministic_encryption::*;
 
 const NB_TESTS: usize = 1;
 
-mod lwe_encryption;
+mod deterministic_encryption;
 
 
 // #[cfg(test)]
@@ -167,8 +171,6 @@ fn test_sk_enc() {
 // }
 
 fn test_pk_enc() {
-	println!("Testing encrypt_lwe_ciphertext_with_public_key");
-
 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
 	// computations
 	// Define parameters for LweCiphertext creation
@@ -229,8 +231,6 @@ fn test_pk_enc() {
 }
 
 fn test_pk_enc_ret_mask() {
-	println!("Testing encrypt_lwe_ciphertext_with_public_key_ret_mask");
-
 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
 	// computations
 	// Define parameters for LweCiphertext creation
@@ -319,8 +319,6 @@ fn test_pk_enc_ret_mask() {
 }
 
 fn test_add() {
-	println!("Testing homomorphic addition");
-
 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
 	// computations
 	// Define parameters for LweCiphertext creation
@@ -381,26 +379,20 @@ fn test_add() {
 	let mut h_c = a.clone();
 	lwe_ciphertext_add(&mut h_c, &a, &b);
 
+	let mut mask_c = mask_a.clone();
+	println!("mask_c.binary_random_vector length: {:?}", mask_c.binary_random_vector.len());
+	lwe_ciphertext_add_mask(&mut mask_c, &mask_a, &mask_b);
+
 	let clear_c = clear_a + clear_b;
 	let plaintext_c = Plaintext(clear_c << 60);
-	// let mut mask_c_vec: Vec<Box<dyn UnsignedTorus>> = Vec::new();
-	// let mut mask_c_vec = Vec::<UnsignedTorus>::new();
-	// slice_wrapping_add(&mut mask_c_vec, &mask_a.binary_random_vector, &mask_b.binary_random_vector);
-	let mask_c_vec = mask_a.binary_random_vector.into_iter().zip(mask_b.binary_random_vector.into_iter())
-						.map(|(a, b)| a + b)
-						.collect();
-	// let mask_c = PublicKeyRandomVectors {
-	// 	binary_random_vector: mask_c_vec,
-	// };
-
 	// deterministically encrypt using the mask in binary_random_vector
 	let mut c = LweCiphertext::new(0u64, lwe_dimension.to_lwe_size(), ciphertext_modulus);
 	encrypt_lwe_ciphertext_with_public_key_and_mask(
 	    &lwe_public_key,
 	    &mut c,
 	    plaintext_c,
-	    mask_c_vec,
-	    // mask_c.binary_random_vector,
+	    // mask_c_vec,
+	    mask_c.binary_random_vector,
 	);
 
 	assert!(c == h_c);
@@ -423,6 +415,95 @@ fn test_add() {
 
 }
 
+fn test_mult_const() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for LweCiphertext creation
+	let lwe_dimension = LweDimension(742);
+	let lwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.000007069849454709433), 0.0);
+	let zero_encryption_count =
+	    LwePublicKeyZeroEncryptionCount(lwe_dimension.to_lwe_size().0 * 64 + 128);
+	let ciphertext_modulus = CiphertextModulus::new_native();
+	println!("ciphertext_modulus: {:?}", ciphertext_modulus);
+
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+
+	// Create the LweSecretKey
+	let lwe_secret_key =
+	    allocate_and_generate_new_binary_lwe_secret_key(lwe_dimension, &mut secret_generator);
+
+	let lwe_public_key = allocate_and_generate_new_lwe_public_key(
+	    &lwe_secret_key,
+	    zero_encryption_count,
+	    lwe_noise_distribution,
+	    ciphertext_modulus,
+	    &mut encryption_generator,
+	);
+
+	// Create the plaintexts
+	let clear_a = 3u64;
+	let plaintext_a = Plaintext(clear_a << 60);
+	let clear_b = 4u64;
+
+	// Create a new LweCiphertext
+	let mut a = LweCiphertext::new(0u64, lwe_dimension.to_lwe_size(), ciphertext_modulus);
+
+	let mask_a = encrypt_lwe_ciphertext_with_public_key_ret_mask(
+	    &lwe_public_key,
+	    &mut a,
+	    plaintext_a,
+	    &mut secret_generator,
+	);
+
+	// println!("check");
+	println!("mask_a.binary_random_vector length: {:?}", mask_a.binary_random_vector.len());
+	// println!("binary_random_vector: {:?}", binary_random_vector);
+
+	let mut h_c = a.clone();
+	lwe_ciphertext_cleartext_mul(&mut h_c, &a, Cleartext(clear_b));
+
+	let mut mask_c = mask_a.clone();
+	println!("mask_c.binary_random_vector length: {:?}", mask_c.binary_random_vector.len());
+	lwe_ciphertext_cleartext_mul_mask(&mut mask_c, &mask_a, Cleartext(clear_b));
+
+	let clear_c = clear_a * clear_b;
+	let plaintext_c = Plaintext(clear_c << 60);
+	// deterministically encrypt using the mask in binary_random_vector
+	let mut c = LweCiphertext::new(0u64, lwe_dimension.to_lwe_size(), ciphertext_modulus);
+	encrypt_lwe_ciphertext_with_public_key_and_mask(
+	    &lwe_public_key,
+	    &mut c,
+	    plaintext_c,
+	    // mask_c_vec,
+	    mask_c.binary_random_vector,
+	);
+
+	assert!(c == h_c);
+	println!("Randomness in homomorphic multiplication with constant: correct");
+
+	let decrypted_plaintext = decrypt_lwe_ciphertext(&lwe_secret_key, &h_c);
+
+	// Round and remove encoding
+	// First create a decomposer working on the high 4 bits corresponding to our encoding.
+	let decomposer = SignedDecomposer::new(DecompositionBaseLog(4), DecompositionLevelCount(1));
+
+	let rounded = decomposer.closest_representable(decrypted_plaintext.0);
+
+	// Remove the encoding
+	let cleartext = rounded >> 60;
+
+	// Check we recovered the original message
+	assert_eq!(cleartext, clear_c);
+	println!("Decryption of homomorphic multiplication with constant: correct");
+
+}
+
 fn main() {
     for argument in std::env::args() {
         if argument == "sk_enc" {
@@ -440,14 +521,19 @@ fn main() {
             test_pk_enc();
             println!();
         }
-        if argument == "pk_enc2" {
+        if argument == "pk_enc_det" {
             println!("Testing encrypt_lwe_ciphertext_with_public_key_ret_mask");
             test_pk_enc_ret_mask();
             println!();
         }
-        if argument == "pk_enc3" {
+        if argument == "pk_enc_add" {
             println!("Testing hommorphic addition");
             test_add();
+            println!();
+        }
+        if argument == "pk_enc_mult_const" {
+            println!("Testing hommorphic multiplication with constant");
+            test_mult_const();
             println!();
         }
 

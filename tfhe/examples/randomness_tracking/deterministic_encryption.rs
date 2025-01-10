@@ -188,6 +188,14 @@ pub struct PublicKeyRandomVectors<Scalar> {
     pub binary_random_vector: Vec<Scalar>,
 }
 
+impl<Scalar: Clone> Clone for PublicKeyRandomVectors<Scalar> {
+    fn clone(&self) -> Self {
+        PublicKeyRandomVectors {
+            binary_random_vector: self.binary_random_vector.clone(),
+        }
+    }
+}
+
 pub fn encrypt_lwe_ciphertext_with_public_key_ret_mask<Scalar, KeyCont, OutputCont, Gen>(
     lwe_public_key: &LwePublicKey<KeyCont>,
     output: &mut LweCiphertext<OutputCont>,
@@ -302,5 +310,48 @@ where
     lwe_ciphertext_plaintext_add_assign(output, encoded);
 }
 
+pub fn lwe_ciphertext_add_mask<Scalar>(
+    output: &mut PublicKeyRandomVectors<Scalar>,
+    lhs: &PublicKeyRandomVectors<Scalar>,
+    rhs: &PublicKeyRandomVectors<Scalar>,
+) where
+    Scalar: UnsignedInteger,
+{
+    assert_eq!(
+        lhs.binary_random_vector.len(),
+        rhs.binary_random_vector.len(),
+        "Mismatched vector length between lhs ({:?}) and rhs ({:?}) masks",
+        lhs.binary_random_vector.len(),
+        rhs.binary_random_vector.len()
+    );
 
+    assert_eq!(
+        output.binary_random_vector.len(),
+        rhs.binary_random_vector.len(),
+        "Mismatched vector length between output ({:?}) and rhs ({:?}) masks",
+        output.binary_random_vector.len(),
+        rhs.binary_random_vector.len()
+    );
 
+    slice_wrapping_add(&mut output.binary_random_vector, &lhs.binary_random_vector, &rhs.binary_random_vector);
+}
+
+pub fn lwe_ciphertext_cleartext_mul_mask<Scalar>(
+    output: &mut PublicKeyRandomVectors<Scalar>,
+    lhs: &PublicKeyRandomVectors<Scalar>,
+    rhs: Cleartext<Scalar>,
+) where
+    Scalar: UnsignedInteger,
+{
+    assert_eq!(
+        output.binary_random_vector.len(),
+        lhs.binary_random_vector.len(),
+        "Mismatched vector length between output ({:?}) and lhs ({:?}) masks",
+        output.binary_random_vector.len(),
+        lhs.binary_random_vector.len()
+    );
+    output.binary_random_vector = lhs.binary_random_vector.clone();
+    slice_wrapping_scalar_mul_assign(&mut output.binary_random_vector, rhs.0);
+    // output.as_mut().copy_from_slice(lhs.as_ref());
+    // lwe_ciphertext_cleartext_mul_assign(output, rhs);
+}
