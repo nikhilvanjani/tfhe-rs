@@ -25,10 +25,12 @@ use tfhe::safe_serialization::safe_serialize;
 use tfhe::core_crypto::prelude::slice_algorithms::slice_wrapping_add;
 
 use crate::deterministic_encryption::*;
+use crate::deterministic_lin_algebra::*;
 
 const NB_TESTS: usize = 1;
 
 mod deterministic_encryption;
+mod deterministic_lin_algebra;
 
 
 fn test_sk_lwe_enc() {
