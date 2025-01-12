@@ -230,7 +230,9 @@ impl<G: ByteRandomGenerator> EncryptionRandomGenerator<G> {
     }
 
     // Adds noise on top of existing data for in place encryption
-    pub(crate) fn unsigned_integer_slice_wrapping_add_random_noise_from_distribution_custom_mod_assign<
+    // Nikhil: made public for access from deterministic_encryption.rs
+    pub fn unsigned_integer_slice_wrapping_add_random_noise_from_distribution_custom_mod_assign<
+    // pub(crate) fn unsigned_integer_slice_wrapping_add_random_noise_from_distribution_custom_mod_assign<
         D,
         Scalar,
     >(
