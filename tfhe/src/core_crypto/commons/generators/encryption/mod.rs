@@ -193,7 +193,9 @@ impl<G: ByteRandomGenerator> EncryptionRandomGenerator<G> {
     }
 
     // Fills the input slice with random noise, using the random generator.
-    pub(crate) fn fill_slice_with_random_noise_from_distribution_custom_mod<D, Scalar>(
+    // Nikhil: made public for access from deterministic_encryption.rs
+    pub fn fill_slice_with_random_noise_from_distribution_custom_mod<D, Scalar>(
+    // pub(crate) fn fill_slice_with_random_noise_from_distribution_custom_mod<D, Scalar>(
         &mut self,
         output: &mut [Scalar],
         distribution: D,

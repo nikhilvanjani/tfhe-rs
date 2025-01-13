@@ -183,7 +183,7 @@ fn test_sk_lwe_enc_ret_mask_and_noise() {
             );
 
 			assert!(lwe == lwe2);
-			println!("Deterministic encryption: correct");
+			println!("Deterministic LWE encryption: correct");
 
         }
     }
@@ -280,7 +280,7 @@ fn test_sk_lwe_add() {
 	            );
 
 				assert!(c == h_c);
-				println!("Randomness in homomorphic addition: correct");
+				println!("Randomness in LWE homomorphic addition: correct");
 
 	            let decrypted_plaintext = decrypt_lwe_ciphertext(&lwe_secret_key, &h_c);
 
@@ -891,6 +891,378 @@ fn test_pbs() {
 	);
 }
 
+fn test_sk_glwe_enc() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GlweCiphertext creation
+	let glwe_size = GlweSize(2);
+	let polynomial_size = PolynomialSize(1024);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
+
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_size.to_glwe_dimension(),
+	    polynomial_size,
+	    &mut secret_generator,
+	);
+
+	// Create the plaintext
+	let msg = 3u64;
+	let encoded_msg = msg << 60;
+	let plaintext_list = PlaintextList::new(encoded_msg, PlaintextCount(polynomial_size.0));
+
+	// Create a new GlweCiphertext
+	let mut glwe = GlweCiphertext::new(0u64, glwe_size, polynomial_size, ciphertext_modulus);
+
+	encrypt_glwe_ciphertext(
+	    &glwe_secret_key,
+	    &mut glwe,
+	    &plaintext_list,
+	    glwe_noise_distribution,
+	    &mut encryption_generator,
+	);
+
+	let mut output_plaintext_list = PlaintextList::new(0u64, plaintext_list.plaintext_count());
+
+	decrypt_glwe_ciphertext(&glwe_secret_key, &glwe, &mut output_plaintext_list);
+
+	// Round and remove encoding
+	// First create a decomposer working on the high 4 bits corresponding to our encoding.
+	let decomposer = SignedDecomposer::new(DecompositionBaseLog(4), DecompositionLevelCount(1));
+
+	output_plaintext_list
+	    .iter_mut()
+	    .for_each(|elt| *elt.0 = decomposer.closest_representable(*elt.0));
+
+	// Get the raw vector
+	let mut cleartext_list = output_plaintext_list.into_container();
+	// Remove the encoding
+	cleartext_list.iter_mut().for_each(|elt| *elt >>= 60);
+	// Get the list immutably
+	let cleartext_list = cleartext_list;
+
+	// Check we recovered the original message for each plaintext we encrypted
+	cleartext_list.iter().for_each(|&elt| assert_eq!(elt, msg));
+}
+
+fn test_sk_glwe_enc_ret_mask_and_noise() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GlweCiphertext creation
+	let glwe_size = GlweSize(2);
+	let polynomial_size = PolynomialSize(1024);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
+
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_size.to_glwe_dimension(),
+	    polynomial_size,
+	    &mut secret_generator,
+	);
+
+	// Create the plaintext
+	let msg = 3u64;
+	let encoded_msg = msg << 60;
+	let plaintext_list = PlaintextList::new(encoded_msg, PlaintextCount(polynomial_size.0));
+
+	// Create a new GlweCiphertext
+	let mut glwe = GlweCiphertext::new(0u64, glwe_size, polynomial_size, ciphertext_modulus);
+
+	let noise = encrypt_glwe_ciphertext_ret_noise(
+	    &glwe_secret_key,
+	    &mut glwe,
+	    &plaintext_list,
+	    glwe_noise_distribution,
+	    &mut encryption_generator,
+	);
+	let mask = glwe.get_mask();
+
+	let mut output_plaintext_list = PlaintextList::new(0u64, plaintext_list.plaintext_count());
+
+	decrypt_glwe_ciphertext(&glwe_secret_key, &glwe, &mut output_plaintext_list);
+
+	// Round and remove encoding
+	// First create a decomposer working on the high 4 bits corresponding to our encoding.
+	let decomposer = SignedDecomposer::new(DecompositionBaseLog(4), DecompositionLevelCount(1));
+
+	output_plaintext_list
+	    .iter_mut()
+	    .for_each(|elt| *elt.0 = decomposer.closest_representable(*elt.0));
+
+	// Get the raw vector
+	let mut cleartext_list = output_plaintext_list.into_container();
+	// Remove the encoding
+	cleartext_list.iter_mut().for_each(|elt| *elt >>= 60);
+	// Get the list immutably
+	let cleartext_list = cleartext_list;
+
+	// Check we recovered the original message for each plaintext we encrypted
+	cleartext_list.iter().for_each(|&elt| assert_eq!(elt, msg));
+
+	let mut glwe2 = GlweCiphertext::new(0u64, glwe_size, polynomial_size, ciphertext_modulus);
+	encrypt_glwe_ciphertext_deterministic(
+	    &glwe_secret_key,
+	    &mut glwe2,
+	    &plaintext_list,
+	    glwe_noise_distribution,
+	    &mut encryption_generator,
+	    &mask,
+	    &noise,
+	);
+
+	assert!(glwe == glwe2);
+	println!("Deterministic GLWE encryption: correct");
+
+}
+
+fn test_sk_glwe_add() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GlweCiphertext creation
+	let glwe_dimension = GlweDimension(1);
+	let polynomial_size = PolynomialSize(2048);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
+
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_dimension,
+	    polynomial_size,
+	    &mut secret_generator,
+	);
+
+    for _ in 0..NB_TESTS {
+        for msg in 0..2u128.pow(MSG_BITS) {
+     	   for msg2 in 0..2u128.pow(MSG_BITS) {
+				// Create the plaintext
+				let clear_a : u128 = msg;
+				let clear_b :u128 = msg2;
+				let encoded_clear_a = clear_a << ENCODING;
+				let encoded_clear_b = clear_b << ENCODING;
+				let plaintext_list_a = PlaintextList::new(encoded_clear_a, PlaintextCount(polynomial_size.0));
+				let plaintext_list_b = PlaintextList::new(encoded_clear_b, PlaintextCount(polynomial_size.0));
+
+				// Create a new GlweCiphertext
+				let mut a = GlweCiphertext::new(
+				    0u128,
+				    glwe_dimension.to_glwe_size(),
+				    polynomial_size,
+				    ciphertext_modulus,
+				);
+				let noise_a = encrypt_glwe_ciphertext_ret_noise(
+				    &glwe_secret_key,
+				    &mut a,
+				    &plaintext_list_a,
+				    glwe_noise_distribution,
+				    &mut encryption_generator,
+				);
+	            let mask_a = a.get_mask();
+
+				let mut b = GlweCiphertext::new(
+				    0u128,
+				    glwe_dimension.to_glwe_size(),
+				    polynomial_size,
+				    ciphertext_modulus,
+				);
+				let noise_b = encrypt_glwe_ciphertext_ret_noise(
+				    &glwe_secret_key,
+				    &mut b,
+				    &plaintext_list_b,
+				    glwe_noise_distribution,
+				    &mut encryption_generator,
+				);
+	            let mask_b = b.get_mask();
+
+				let mut h_c = a.clone();
+
+				glwe_ciphertext_add(&mut h_c, &a, &b);
+
+				// TESTING: deterministic homomorphic addition
+				let clear_c : u128 = (clear_a + clear_b) % 2u128.pow(MSG_BITS);
+				let encoded_clear_c = clear_c << ENCODING;
+				let plaintext_list_c = PlaintextList::new(encoded_clear_c, PlaintextCount(polynomial_size.0));
+				
+				let mut c = GlweCiphertext::new(
+				    0u128,
+				    glwe_dimension.to_glwe_size(),
+				    polynomial_size,
+				    ciphertext_modulus,
+				);
+
+				let mut c_clone = c.clone();
+				let mut mask_c = c_clone.get_mut_mask();
+				glwe_ciphertext_add_mask(&mut mask_c, &mask_a, &mask_b);
+				let noise_c = glwe_ciphertext_add_noise(&noise_a, &noise_b);
+
+				encrypt_glwe_ciphertext_deterministic(
+				    &glwe_secret_key,
+				    &mut c,
+				    &plaintext_list_c,
+				    glwe_noise_distribution,
+				    &mut encryption_generator,
+	                &GlweMask::from_container(mask_c.as_ref(), mask_c.polynomial_size(), mask_c.ciphertext_modulus()),
+				    // &mask,
+				    &noise_c,
+				);
+
+				assert!(c == h_c);
+				println!("Randomness in GLWE homomorphic addition: correct");
+
+				// TESTING: decryption
+				let mut plaintext_list_c =
+				    PlaintextList::new(0u128, PlaintextCount(h_c.polynomial_size().0));
+
+				decrypt_glwe_ciphertext(&glwe_secret_key, &h_c, &mut plaintext_list_c);
+
+				// Round and remove encoding
+				// First create a decomposer working on the high 4 bits corresponding to our encoding.
+				let decomposer = SignedDecomposer::new(DecompositionBaseLog(4), DecompositionLevelCount(1));
+
+				// Round and remove encoding in the output plaintext list
+				plaintext_list_c
+				    .iter_mut()
+				    .for_each(|x| *x.0 = decomposer.closest_representable(*x.0) >> ENCODING);
+
+				// Check we recovered the expected result
+				assert!(plaintext_list_c.iter().all(|x| *x.0 == clear_c));
+			}
+		}
+	}
+}
+
+fn test_sk_glwe_mult_const() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GlweCiphertext creation
+	let glwe_dimension = GlweDimension(1);
+	let polynomial_size = PolynomialSize(2048);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
+
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_dimension,
+	    polynomial_size,
+	    &mut secret_generator,
+	);
+
+    for _ in 0..NB_TESTS {
+        for msg in 0..2u128.pow(MSG_BITS) {
+     	   for msg2 in 0..2u128.pow(MSG_BITS) {
+				// Create the plaintext
+				let clear_a : u128 = msg;
+				let clear_b :u128 = msg2;
+				let encoded_clear_a = clear_a << ENCODING;
+				let plaintext_list_a = PlaintextList::new(encoded_clear_a, PlaintextCount(polynomial_size.0));
+
+				// Create a new GlweCiphertext
+				let mut a = GlweCiphertext::new(
+				    0u128,
+				    glwe_dimension.to_glwe_size(),
+				    polynomial_size,
+				    ciphertext_modulus,
+				);
+				let noise_a = encrypt_glwe_ciphertext_ret_noise(
+				    &glwe_secret_key,
+				    &mut a,
+				    &plaintext_list_a,
+				    glwe_noise_distribution,
+				    &mut encryption_generator,
+				);
+	            let mask_a = a.get_mask();
+
+				let mut h_c = a.clone();
+				glwe_ciphertext_cleartext_mul(&mut h_c, &a, Cleartext(clear_b));
+
+				// TESTING: deterministic homomorphic multiplication with constant 
+				let clear_c : u128 = (clear_a * clear_b) % 2u128.pow(MSG_BITS);
+				let encoded_clear_c = clear_c << ENCODING;
+				let plaintext_list_c = PlaintextList::new(encoded_clear_c, PlaintextCount(polynomial_size.0));
+				
+				let mut c = GlweCiphertext::new(
+				    0u128,
+				    glwe_dimension.to_glwe_size(),
+				    polynomial_size,
+				    ciphertext_modulus,
+				);
+
+				let mut c_clone = c.clone();
+				let mut mask_c = c_clone.get_mut_mask();
+				glwe_ciphertext_cleartext_mul_mask(&mut mask_c, &mask_a, &clear_b);
+				let noise_c = glwe_ciphertext_cleartext_mul_noise(&noise_a, &clear_b);
+
+				encrypt_glwe_ciphertext_deterministic(
+				    &glwe_secret_key,
+				    &mut c,
+				    &plaintext_list_c,
+				    glwe_noise_distribution,
+				    &mut encryption_generator,
+	                &GlweMask::from_container(mask_c.as_ref(), mask_c.polynomial_size(), mask_c.ciphertext_modulus()),
+				    // &mask,
+				    &noise_c,
+				);
+
+				assert!(c == h_c);
+				println!("Randomness in GLWE homomorphic multiplication with constant: correct");
+
+				// TESTING: decryption
+				let mut plaintext_list_c =
+				    PlaintextList::new(0u128, PlaintextCount(h_c.polynomial_size().0));
+
+				decrypt_glwe_ciphertext(&glwe_secret_key, &h_c, &mut plaintext_list_c);
+
+				// Round and remove encoding
+				// First create a decomposer working on the high 4 bits corresponding to our encoding.
+				let decomposer = SignedDecomposer::new(DecompositionBaseLog(4), DecompositionLevelCount(1));
+
+				// Round and remove encoding in the output plaintext list
+				plaintext_list_c
+				    .iter_mut()
+				    .for_each(|x| *x.0 = decomposer.closest_representable(*x.0) >> ENCODING);
+
+				// Check we recovered the expected result
+				assert!(plaintext_list_c
+				    .iter()
+				    .all(|x| *x.0 == clear_c));
+			}
+		}
+	}
+}
+
 fn test_sk_ggsw_enc() {
 	println!("Testing encrypt_constant_seeded_ggsw_ciphertext");
 	use tfhe::core_crypto::prelude::*;
@@ -978,18 +1350,19 @@ fn test_sk_ggsw_enc_ret_mask_and_noise() {
 	let cleartext = Cleartext(3u64);
 
 	// Create a new GgswCiphertext
+	let ggsw_seed = seeder.seed().into();
+	// println!("ggsw_seed: {:?}", ggsw_seed);
 	let mut ggsw = SeededGgswCiphertext::new(
 	    0u64,
 	    glwe_size,
 	    polynomial_size,
 	    decomp_base_log,
 	    decomp_level_count,
-	    seeder.seed().into(),
+	    ggsw_seed,
 	    ciphertext_modulus,
 	);
 
-	// TODO: define this
-	let noise = encrypt_constant_seeded_ggsw_ciphertext_ret_noise(
+	let (mask_vector, noise_vector) = encrypt_constant_seeded_ggsw_ciphertext_ret_noise(
 	// encrypt_constant_seeded_ggsw_ciphertext_ret_noise(
 	    &glwe_secret_key,
 	    &mut ggsw,
@@ -997,9 +1370,6 @@ fn test_sk_ggsw_enc_ret_mask_and_noise() {
 	    glwe_noise_distribution,
 	    seeder,
 	);
-	// let mask = ggsw.get_mask();
-	let mask_count = ggsw_ciphertext_encryption_mask_sample_count(glwe_size, polynomial_size, decomp_level_count);
-	println!("mask_count: {:?}", mask_count);
 
 	let ggsw = ggsw.decompress_into_ggsw_ciphertext();
 
@@ -1007,29 +1377,64 @@ fn test_sk_ggsw_enc_ret_mask_and_noise() {
 	assert_eq!(decrypted, cleartext);
 
 	// deterministically encrypt using the mask in binary_random_vector
+	// let ggsw2_seed = seeder.seed().into(); // this gives a new value, don't use
+	// println!("ggsw2_seed: {:?}", ggsw2_seed);
 	let mut ggsw2 = SeededGgswCiphertext::new(
 	    0u64,
 	    glwe_size,
 	    polynomial_size,
 	    decomp_base_log,
 	    decomp_level_count,
-	    seeder.seed().into(),
+	    ggsw_seed, // use the same seed as in ggsw
+	    // ggsw2_seed, // this gives a new value, don't use
 	    ciphertext_modulus,
 	);
 	
-	// // TODO: define this
-    // encrypt_constant_seeded_ggsw_ciphertext_deterministic(
-    //     &glwe_secret_key,
-	//     &mut ggsw2,
-	//     cleartext,
-	//     glwe_noise_distribution,
-	//     seeder,
-	//     &mask,
-	//     noise,
-	// );
+    encrypt_constant_seeded_ggsw_ciphertext_deterministic(
+        &glwe_secret_key,
+	    &mut ggsw2,
+	    cleartext,
+	    glwe_noise_distribution,
+	    seeder,
+	    &mask_vector,
+	    &noise_vector,
+	);
+	// assert!(ggsw.ggsw_ciphertext_size() == ggsw2.ggsw_ciphertext_size());
+	// assert!(ggsw.ggsw_level_matrix_size() == ggsw2.ggsw_level_matrix_size());
+	// assert!(ggsw.ggsw_ciphertext_encryption_mask_sample_count() == ggsw2.ggsw_ciphertext_encryption_mask_sample_count());
+	// assert!(ggsw.ggsw_level_matrix_encryption_mask_sample_count() == ggsw2.ggsw_level_matrix_encryption_mask_sample_count());
+	// assert!(ggsw.ggsw_ciphertext_encryption_noise_sample_count() == ggsw2.ggsw_ciphertext_encryption_noise_sample_count());
+	// assert!(ggsw.ggsw_level_matrix_encryption_noise_sample_count() == ggsw2.ggsw_level_matrix_encryption_noise_sample_count());
+	
+	// assert!(ggsw.glwe_size() == ggsw2.glwe_size());
+	// assert!(ggsw.polynomial_size() == ggsw2.polynomial_size());
+	// assert!(ggsw.decomposition_base_log() == ggsw2.decomposition_base_log());
+	// assert!(ggsw.ciphertext_modulus() == ggsw2.ciphertext_modulus());
+	// if (ggsw.as_view() != ggsw2.as_view()) {
+	// 	println!("FAILED: as_view");
+	// 	println!("ggsw.as_view() : {:?}", ggsw.as_view());
+	// 	println!("ggsw2.as_view(): {:?}", ggsw2.as_view());
 
+	// }
+	// if (ggsw.as_ref() != ggsw2.as_ref()) {
+	// 	println!("FAILED: as_ref");
+	// }	
+	// if (ggsw.as_polynomial_list() != ggsw2.as_polynomial_list()) {
+	// 	println!("FAILED: as_polynomial_list");
+	// }	
+	// if (ggsw.as_glwe_list() != ggsw2.as_glwe_list()) {
+	// 	println!("FAILED: as_glwe_list");
+	// }
+
+	// println!("ggsw : {:?}", ggsw);
+	// println!("ggsw2: {:?}", ggsw2);
 	// assert!(ggsw == ggsw2);
-	// println!("Deterministic encryption: correct");
+
+	let ggsw2 = ggsw2.decompress_into_ggsw_ciphertext();
+	assert!(ggsw == ggsw2);
+	println!("Deterministic GGSW encryption: correct");
+
+
 }
 
 // fn test_pbs_det() {
@@ -1195,13 +1600,13 @@ fn main() {
             test_sk_lwe_enc_ret_mask_and_noise();
             println!();
         }
-        if argument == "sk_lwe_enc_add" {
-            println!("Testing sk hommorphic addition");
+        if argument == "sk_lwe_add" {
+            println!("Testing sk LWE hommorphic addition");
             test_sk_lwe_add();
             println!();
         }
-        if argument == "sk_lwe_enc_mult_const" {
-            println!("Testing sk hommorphic multiplication with constant");
+        if argument == "sk_lwe_mult_const" {
+            println!("Testing sk LWE hommorphic multiplication with constant");
             test_sk_lwe_mult_const();
             println!();
         }
@@ -1215,12 +1620,12 @@ fn main() {
             test_pk_lwe_enc_ret_mask();
             println!();
         }
-        if argument == "pk_lwe_enc_add" {
+        if argument == "pk_lwe_add" {
             println!("Testing pk hommorphic addition");
             test_pk_lwe_add();
             println!();
         }
-        if argument == "pk_lwe_enc_mult_const" {
+        if argument == "pk_lwe_mult_const" {
             println!("Testing pk hommorphic multiplication with constant");
             test_pk_lwe_mult_const();
             println!();
@@ -1229,6 +1634,26 @@ fn main() {
         if argument == "lwe_pbs" {
             println!("Testing programmable bootstrapping");
             test_pbs();
+            println!();
+        }
+        if argument == "sk_glwe_enc" {
+            println!("Testing encrypt_glwe_ciphertext");
+            test_sk_glwe_enc();
+            println!();
+        }
+        if argument == "sk_glwe_enc_det" {
+            println!("Testing encrypt_glwe_ciphertext_ret_noise");
+            test_sk_glwe_enc_ret_mask_and_noise();
+            println!();
+        }
+        if argument == "sk_glwe_add" {
+            println!("Testing sk GLWE hommorphic addition");
+            test_sk_glwe_add();
+            println!();
+        }
+        if argument == "sk_glwe_mult_const" {
+            println!("Testing sk GLWE hommorphic multiplication with constant");
+            test_sk_glwe_mult_const();
             println!();
         }
         if argument == "sk_ggsw_enc" {
