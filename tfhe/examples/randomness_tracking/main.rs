@@ -99,7 +99,7 @@ fn test_sk_lwe_enc() {
 
 }
 
-fn test_sk_lwe_enc_ret_mask_and_noise() {
+fn test_sk_lwe_enc_det() {
 	println!("Testing encrypt_lwe_ciphertext_ret_noise");
     // DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
     // computations
@@ -467,7 +467,7 @@ fn test_pk_lwe_enc() {
 
 }
 
-fn test_pk_lwe_enc_ret_mask() {
+fn test_pk_lwe_enc_det() {
 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
 	// computations
 	// Define parameters for LweCiphertext creation
@@ -954,7 +954,7 @@ fn test_sk_glwe_enc() {
 	cleartext_list.iter().for_each(|&elt| assert_eq!(elt, msg));
 }
 
-fn test_sk_glwe_enc_ret_mask_and_noise() {
+fn test_sk_glwe_enc_det() {
 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
 	// computations
 	// Define parameters for GlweCiphertext creation
@@ -1312,14 +1312,16 @@ fn test_sk_ggsw_enc() {
 	    seeder,
 	);
 
+	// println!("ggsw: {:?}", ggsw);
 	let ggsw = ggsw.decompress_into_ggsw_ciphertext();
+	// println!("ggsw: {:?}", ggsw);
 
 	let decrypted = decrypt_constant_ggsw_ciphertext(&glwe_secret_key, &ggsw);
 	assert_eq!(decrypted, cleartext);
 
 }
 
-fn test_sk_ggsw_enc_ret_mask_and_noise() {
+fn test_sk_ggsw_enc_det() {
 	println!("Testing encrypt_constant_seeded_ggsw_ciphertext");
 	use tfhe::core_crypto::prelude::*;
 
@@ -1362,8 +1364,8 @@ fn test_sk_ggsw_enc_ret_mask_and_noise() {
 	    ciphertext_modulus,
 	);
 
-	let (mask_vector, noise_vector) = encrypt_constant_seeded_ggsw_ciphertext_ret_noise(
-	// encrypt_constant_seeded_ggsw_ciphertext_ret_noise(
+	let (mask_vector, noise_vector) = encrypt_constant_seeded_ggsw_ciphertext_ret_mask_and_noise(
+	// encrypt_constant_seeded_ggsw_ciphertext_ret_mask_and_noise(
 	    &glwe_secret_key,
 	    &mut ggsw,
 	    cleartext,
@@ -1437,156 +1439,317 @@ fn test_sk_ggsw_enc_ret_mask_and_noise() {
 
 }
 
-// fn test_pbs_det() {
-// 	// This example recreates a PBS by combining a blind rotate and a sample extract.
+fn test_sk_ggsw_par_enc() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GgswCiphertext creation
+	let glwe_size = GlweSize(2);
+	let polynomial_size = PolynomialSize(1024);
+	let decomp_base_log = DecompositionBaseLog(8);
+	let decomp_level_count = DecompositionLevelCount(3);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
 
-// 	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
-// 	// computations
-// 	// Define the parameters for a 4 bits message able to hold the doubled 2 bits message
-// 	let small_lwe_dimension = LweDimension(742);
-// 	let glwe_dimension = GlweDimension(1);
-// 	let polynomial_size = PolynomialSize(2048);
-// 	let lwe_noise_distribution =
-// 	    Gaussian::from_dispersion_parameter(StandardDev(0.000007069849454709433), 0.0);
-// 	let glwe_noise_distribution =
-// 	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
-// 	let pbs_base_log = DecompositionBaseLog(23);
-// 	let pbs_level = DecompositionLevelCount(1);
-// 	let ciphertext_modulus = CiphertextModulus::new_native();
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
 
-// 	// Request the best seeder possible, starting with hardware entropy sources and falling back to
-// 	// /dev/random on Unix systems if enabled via cargo features
-// 	let mut boxed_seeder = new_seeder();
-// 	// Get a mutable reference to the seeder as a trait object from the Box returned by new_seeder
-// 	let seeder = boxed_seeder.as_mut();
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_size.to_glwe_dimension(),
+	    polynomial_size,
+	    &mut secret_generator,
+	);
 
-// 	// Create a generator which uses a CSPRNG to generate secret keys
-// 	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
+	// Create the cleartext
+	let cleartext = Cleartext(3u64);
 
-// 	// Create a generator which uses two CSPRNGs to generate public masks and secret encryption
-// 	// noise
-// 	let mut encryption_generator =
-// 	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+	// Create a new GgswCiphertext
+	let mut ggsw = SeededGgswCiphertext::new(
+	    0u64,
+	    glwe_size,
+	    polynomial_size,
+	    decomp_base_log,
+	    decomp_level_count,
+	    seeder.seed().into(),
+	    ciphertext_modulus,
+	);
 
-// 	println!("Generating keys...");
+	par_encrypt_constant_seeded_ggsw_ciphertext(
+	    &glwe_secret_key,
+	    &mut ggsw,
+	    cleartext,
+	    glwe_noise_distribution,
+	    seeder,
+	);
 
-// 	// Generate an LweSecretKey with binary coefficients
-// 	let small_lwe_sk =
-// 	    LweSecretKey::generate_new_binary(small_lwe_dimension, &mut secret_generator);
+	let ggsw = ggsw.decompress_into_ggsw_ciphertext();
 
-// 	// Generate a GlweSecretKey with binary coefficients
-// 	let glwe_sk =
-// 	    GlweSecretKey::generate_new_binary(glwe_dimension, polynomial_size, &mut secret_generator);
+	let decrypted = decrypt_constant_ggsw_ciphertext(&glwe_secret_key, &ggsw);
+	assert_eq!(decrypted, cleartext);
+}
 
-// 	// Create a copy of the GlweSecretKey re-interpreted as an LweSecretKey
-// 	let big_lwe_sk = glwe_sk.clone().into_lwe_secret_key();
+fn test_sk_ggsw_par_enc_det() {
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define parameters for GgswCiphertext creation
+	let glwe_size = GlweSize(2);
+	let polynomial_size = PolynomialSize(1024);
+	let decomp_base_log = DecompositionBaseLog(8);
+	let decomp_level_count = DecompositionLevelCount(3);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let ciphertext_modulus = CiphertextModulus::new_native();
 
-// 	// Generate the seeded bootstrapping key to show how to handle entity decompression,
-// 	// we use the parallel variant for performance reason
-// 	let std_bootstrapping_key = par_allocate_and_generate_new_seeded_lwe_bootstrap_key(
-// 	    &small_lwe_sk,
-// 	    &glwe_sk,
-// 	    pbs_base_log,
-// 	    pbs_level,
-// 	    glwe_noise_distribution,
-// 	    ciphertext_modulus,
-// 	    seeder,
-// 	);
+	// Create the PRNG
+	let mut seeder = new_seeder();
+	let seeder = seeder.as_mut();
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
 
-// 	// We decompress the bootstrapping key
-// 	let std_bootstrapping_key: LweBootstrapKeyOwned<u64> =
-// 	    std_bootstrapping_key.decompress_into_lwe_bootstrap_key();
+	// Create the GlweSecretKey
+	let glwe_secret_key = allocate_and_generate_new_binary_glwe_secret_key(
+	    glwe_size.to_glwe_dimension(),
+	    polynomial_size,
+	    &mut secret_generator,
+	);
 
-// 	// Create the empty bootstrapping key in the Fourier domain
-// 	let mut fourier_bsk = FourierLweBootstrapKey::new(
-// 	    std_bootstrapping_key.input_lwe_dimension(),
-// 	    std_bootstrapping_key.glwe_size(),
-// 	    std_bootstrapping_key.polynomial_size(),
-// 	    std_bootstrapping_key.decomposition_base_log(),
-// 	    std_bootstrapping_key.decomposition_level_count(),
-// 	);
+	// Create the cleartext
+	let cleartext = Cleartext(3u64);
 
-// 	// Use the conversion function (a memory optimized version also exists but is more complicated
-// 	// to use) to convert the standard bootstrapping key to the Fourier domain
-// 	convert_standard_lwe_bootstrap_key_to_fourier(&std_bootstrapping_key, &mut fourier_bsk);
-// 	// We don't need the standard bootstrapping key anymore
-// 	drop(std_bootstrapping_key);
+	// Create a new GgswCiphertext
+	let ggsw_seed = seeder.seed().into();
+	let mut ggsw = SeededGgswCiphertext::new(
+	    0u64,
+	    glwe_size,
+	    polynomial_size,
+	    decomp_base_log,
+	    decomp_level_count,
+	    ggsw_seed,
+	    ciphertext_modulus,
+	);
 
-// 	// Our 4 bits message space
-// 	let message_modulus = 1u64 << 4;
+	let (mask_vector, noise_vector) = par_encrypt_constant_seeded_ggsw_ciphertext_ret_mask_and_noise(
+	// par_encrypt_constant_seeded_ggsw_ciphertext(
+	    &glwe_secret_key,
+	    &mut ggsw,
+	    cleartext,
+	    glwe_noise_distribution,
+	    seeder,
+	);
 
-// 	// Our input message
-// 	let input_message = 3u64;
+	let ggsw = ggsw.decompress_into_ggsw_ciphertext();
 
-// 	// Delta used to encode 4 bits of message + a bit of padding on u64
-// 	let delta = (1_u64 << 63) / message_modulus;
+	let decrypted = decrypt_constant_ggsw_ciphertext(&glwe_secret_key, &ggsw);
+	assert_eq!(decrypted, cleartext);
 
-// 	// Apply our encoding
-// 	let plaintext = Plaintext(input_message * delta);
+	// deterministically encrypt using the mask in binary_random_vector
+	// let ggsw2_seed = seeder.seed().into(); // this gives a new value, don't use
+	// println!("ggsw2_seed: {:?}", ggsw2_seed);
+	let mut ggsw2 = SeededGgswCiphertext::new(
+	    0u64,
+	    glwe_size,
+	    polynomial_size,
+	    decomp_base_log,
+	    decomp_level_count,
+	    ggsw_seed, // use the same seed as in ggsw
+	    // ggsw2_seed, // this gives a new value, don't use
+	    ciphertext_modulus,
+	);
+	
+    par_encrypt_constant_seeded_ggsw_ciphertext_deterministic(
+        &glwe_secret_key,
+	    &mut ggsw2,
+	    cleartext,
+	    glwe_noise_distribution,
+	    seeder,
+	    &mask_vector,
+	    &noise_vector,
+	);
+	// assert!(ggsw.ggsw_ciphertext_size() == ggsw2.ggsw_ciphertext_size());
+	// assert!(ggsw.ggsw_level_matrix_size() == ggsw2.ggsw_level_matrix_size());
+	// assert!(ggsw.ggsw_ciphertext_encryption_mask_sample_count() == ggsw2.ggsw_ciphertext_encryption_mask_sample_count());
+	// assert!(ggsw.ggsw_level_matrix_encryption_mask_sample_count() == ggsw2.ggsw_level_matrix_encryption_mask_sample_count());
+	// assert!(ggsw.ggsw_ciphertext_encryption_noise_sample_count() == ggsw2.ggsw_ciphertext_encryption_noise_sample_count());
+	// assert!(ggsw.ggsw_level_matrix_encryption_noise_sample_count() == ggsw2.ggsw_level_matrix_encryption_noise_sample_count());
+	
+	// assert!(ggsw.glwe_size() == ggsw2.glwe_size());
+	// assert!(ggsw.polynomial_size() == ggsw2.polynomial_size());
+	// assert!(ggsw.decomposition_base_log() == ggsw2.decomposition_base_log());
+	// assert!(ggsw.ciphertext_modulus() == ggsw2.ciphertext_modulus());
+	// if (ggsw.as_view() != ggsw2.as_view()) {
+	// 	println!("FAILED: as_view");
+	// 	println!("ggsw.as_view() : {:?}", ggsw.as_view());
+	// 	println!("ggsw2.as_view(): {:?}", ggsw2.as_view());
 
-// 	// Allocate a new LweCiphertext and encrypt our plaintext
-// 	let (lwe_ciphertext_in: LweCiphertextOwned<u64>, noise_in: UnsignedInteger) = allocate_and_encrypt_new_lwe_ciphertext_ret_noise(
-// 	// let (lwe_ciphertext_in: LweCiphertextOwned<u64>, noise_in) = allocate_and_encrypt_new_lwe_ciphertext_ret_noise(
-// 	    &small_lwe_sk,
-// 	    plaintext,
-// 	    lwe_noise_distribution,
-// 	    ciphertext_modulus,
-// 	    &mut encryption_generator,
-// 	);
-// 	let mask_in = lwe_ciphertext_in.get_mask();
+	// }
+	// if (ggsw.as_ref() != ggsw2.as_ref()) {
+	// 	println!("FAILED: as_ref");
+	// }	
+	// if (ggsw.as_polynomial_list() != ggsw2.as_polynomial_list()) {
+	// 	println!("FAILED: as_polynomial_list");
+	// }	
+	// if (ggsw.as_glwe_list() != ggsw2.as_glwe_list()) {
+	// 	println!("FAILED: as_glwe_list");
+	// }
 
-// 	// Now we will use a PBS to compute a multiplication by 2, it is NOT the recommended way of
-// 	// doing this operation in terms of performance as it's much more costly than a multiplication
-// 	// with a cleartext, however it resets the noise in a ciphertext to a nominal level and allows
-// 	// to evaluate arbitrary functions so depending on your use case it can be a better fit.
+	// println!("ggsw : {:?}", ggsw);
+	// println!("ggsw2: {:?}", ggsw2);
+	// assert!(ggsw == ggsw2);
 
-// 	// Generate the accumulator for our multiplication by 2 using a simple closure
-// 	let mut accumulator: GlweCiphertextOwned<u64> = generate_programmable_bootstrap_glwe_lut(
-// 	    polynomial_size,
-// 	    glwe_dimension.to_glwe_size(),
-// 	    message_modulus as usize,
-// 	    ciphertext_modulus,
-// 	    delta,
-// 	    |x: u64| 2 * x,
-// 	);
+	let ggsw2 = ggsw2.decompress_into_ggsw_ciphertext();
+	assert!(ggsw == ggsw2);
+	println!("Deterministic GGSW parallel encryption: correct");
 
-// 	// Allocate the LweCiphertext to store the result of the PBS
-// 	let mut pbs_multiplication_ct = LweCiphertext::new(
-// 	    0u64,
-// 	    big_lwe_sk.lwe_dimension().to_lwe_size(),
-// 	    ciphertext_modulus,
-// 	);
-// 	println!("Performing blind rotation...");
-// 	blind_rotate_assign(&lwe_ciphertext_in, &mut accumulator, &fourier_bsk);
-// 	// TODO: define functions to update mask and noise after blind_rotate_assign
+}
 
-// 	println!("Performing sample extraction...");
-// 	extract_lwe_sample_from_glwe_ciphertext(
-// 	    &accumulator,
-// 	    &mut pbs_multiplication_ct,
-// 	    MonomialDegree(0),
-// 	);
+fn test_pbs_det() {
+	// This example recreates a PBS by combining a blind rotate and a sample extract.
 
-// 	// Decrypt the PBS multiplication result
-// 	let pbs_multiplication_plaintext: Plaintext<u64> =
-// 	    decrypt_lwe_ciphertext(&big_lwe_sk, &pbs_multiplication_ct);
+	// DISCLAIMER: these toy example parameters are not guaranteed to be secure or yield correct
+	// computations
+	// Define the parameters for a 4 bits message able to hold the doubled 2 bits message
+	let small_lwe_dimension = LweDimension(742);
+	let glwe_dimension = GlweDimension(1);
+	let polynomial_size = PolynomialSize(2048);
+	let lwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.000007069849454709433), 0.0);
+	let glwe_noise_distribution =
+	    Gaussian::from_dispersion_parameter(StandardDev(0.00000000000000029403601535432533), 0.0);
+	let pbs_base_log = DecompositionBaseLog(23);
+	let pbs_level = DecompositionLevelCount(1);
+	let ciphertext_modulus = CiphertextModulus::new_native();
 
-// 	// Create a SignedDecomposer to perform the rounding of the decrypted plaintext
-// 	// We pass a DecompositionBaseLog of 5 and a DecompositionLevelCount of 1 indicating we want to
-// 	// round the 5 MSB, 1 bit of padding plus our 4 bits of message
-// 	let signed_decomposer =
-// 	    SignedDecomposer::new(DecompositionBaseLog(5), DecompositionLevelCount(1));
+	// Request the best seeder possible, starting with hardware entropy sources and falling back to
+	// /dev/random on Unix systems if enabled via cargo features
+	let mut boxed_seeder = new_seeder();
+	// Get a mutable reference to the seeder as a trait object from the Box returned by new_seeder
+	let seeder = boxed_seeder.as_mut();
 
-// 	// Round and remove our encoding
-// 	let pbs_multiplication_result: u64 =
-// 	    signed_decomposer.closest_representable(pbs_multiplication_plaintext.0) / delta;
+	// Create a generator which uses a CSPRNG to generate secret keys
+	let mut secret_generator = SecretRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed());
 
-// 	println!("Checking result...");
-// 	assert_eq!(6, pbs_multiplication_result);
-// 	println!(
-// 	    "Multiplication via PBS result is correct! Expected 6, got {pbs_multiplication_result}"
-// 	);
-// }
+	// Create a generator which uses two CSPRNGs to generate public masks and secret encryption
+	// noise
+	let mut encryption_generator =
+	    EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+
+	println!("Generating keys...");
+
+	// Generate an LweSecretKey with binary coefficients
+	let small_lwe_sk =
+	    LweSecretKey::generate_new_binary(small_lwe_dimension, &mut secret_generator);
+
+	// Generate a GlweSecretKey with binary coefficients
+	let glwe_sk =
+	    GlweSecretKey::generate_new_binary(glwe_dimension, polynomial_size, &mut secret_generator);
+
+	// Create a copy of the GlweSecretKey re-interpreted as an LweSecretKey
+	let big_lwe_sk = glwe_sk.clone().into_lwe_secret_key();
+
+	// Generate the seeded bootstrapping key to show how to handle entity decompression,
+	// we use the parallel variant for performance reason
+	let (std_bootstrapping_key, mask_vector, noise_vector) = par_allocate_and_generate_new_seeded_lwe_bootstrap_key_ret_mask_and_noise(
+	    &small_lwe_sk,
+	    &glwe_sk,
+	    pbs_base_log,
+	    pbs_level,
+	    glwe_noise_distribution,
+	    ciphertext_modulus,
+	    seeder,
+	);
+
+	// We decompress the bootstrapping key
+	let std_bootstrapping_key: LweBootstrapKeyOwned<u64> =
+	    std_bootstrapping_key.decompress_into_lwe_bootstrap_key();
+
+	// Create the empty bootstrapping key in the Fourier domain
+	let mut fourier_bsk = FourierLweBootstrapKey::new(
+	    std_bootstrapping_key.input_lwe_dimension(),
+	    std_bootstrapping_key.glwe_size(),
+	    std_bootstrapping_key.polynomial_size(),
+	    std_bootstrapping_key.decomposition_base_log(),
+	    std_bootstrapping_key.decomposition_level_count(),
+	);
+
+	// Use the conversion function (a memory optimized version also exists but is more complicated
+	// to use) to convert the standard bootstrapping key to the Fourier domain
+	convert_standard_lwe_bootstrap_key_to_fourier(&std_bootstrapping_key, &mut fourier_bsk);
+	// We don't need the standard bootstrapping key anymore
+	drop(std_bootstrapping_key);
+
+	// Our 4 bits message space
+	let message_modulus = 1u64 << 4;
+
+	// Our input message
+	let input_message = 3u64;
+
+	// Delta used to encode 4 bits of message + a bit of padding on u64
+	let delta = (1_u64 << 63) / message_modulus;
+
+	// Apply our encoding
+	let plaintext = Plaintext(input_message * delta);
+
+	// Allocate a new LweCiphertext and encrypt our plaintext
+	let lwe_ciphertext_in: LweCiphertextOwned<u64> = allocate_and_encrypt_new_lwe_ciphertext(
+	    &small_lwe_sk,
+	    plaintext,
+	    lwe_noise_distribution,
+	    ciphertext_modulus,
+	    &mut encryption_generator,
+	);
+
+	// Now we will use a PBS to compute a multiplication by 2, it is NOT the recommended way of
+	// doing this operation in terms of performance as it's much more costly than a multiplication
+	// with a cleartext, however it resets the noise in a ciphertext to a nominal level and allows
+	// to evaluate arbitrary functions so depending on your use case it can be a better fit.
+
+	// Generate the accumulator for our multiplication by 2 using a simple closure
+	let mut accumulator: GlweCiphertextOwned<u64> = generate_programmable_bootstrap_glwe_lut(
+	    polynomial_size,
+	    glwe_dimension.to_glwe_size(),
+	    message_modulus as usize,
+	    ciphertext_modulus,
+	    delta,
+	    |x: u64| 2 * x,
+	);
+
+	// Allocate the LweCiphertext to store the result of the PBS
+	let mut pbs_multiplication_ct = LweCiphertext::new(
+	    0u64,
+	    big_lwe_sk.lwe_dimension().to_lwe_size(),
+	    ciphertext_modulus,
+	);
+	println!("Performing blind rotation...");
+	blind_rotate_assign(&lwe_ciphertext_in, &mut accumulator, &fourier_bsk);
+	println!("Performing sample extraction...");
+	extract_lwe_sample_from_glwe_ciphertext(
+	    &accumulator,
+	    &mut pbs_multiplication_ct,
+	    MonomialDegree(0),
+	);
+
+	// Decrypt the PBS multiplication result
+	let pbs_multiplication_plaintext: Plaintext<u64> =
+	    decrypt_lwe_ciphertext(&big_lwe_sk, &pbs_multiplication_ct);
+
+	// Create a SignedDecomposer to perform the rounding of the decrypted plaintext
+	// We pass a DecompositionBaseLog of 5 and a DecompositionLevelCount of 1 indicating we want to
+	// round the 5 MSB, 1 bit of padding plus our 4 bits of message
+	let signed_decomposer =
+	    SignedDecomposer::new(DecompositionBaseLog(5), DecompositionLevelCount(1));
+
+	// Round and remove our encoding
+	let pbs_multiplication_result: u64 =
+	    signed_decomposer.closest_representable(pbs_multiplication_plaintext.0) / delta;
+
+	println!("Checking result...");
+	assert_eq!(6, pbs_multiplication_result);
+	println!(
+	    "Multiplication via PBS result is correct! Expected 6, got {pbs_multiplication_result}"
+	);
+}
 
 fn main() {
     for argument in std::env::args() {
@@ -1597,7 +1760,7 @@ fn main() {
         }
         if argument == "sk_lwe_enc_det" {
             println!("Testing encrypt_lwe_ciphertext_ret_noise");
-            test_sk_lwe_enc_ret_mask_and_noise();
+            test_sk_lwe_enc_det();
             println!();
         }
         if argument == "sk_lwe_add" {
@@ -1617,7 +1780,7 @@ fn main() {
         }
         if argument == "pk_lwe_enc_det" {
             println!("Testing encrypt_lwe_ciphertext_with_public_key_ret_mask");
-            test_pk_lwe_enc_ret_mask();
+            test_pk_lwe_enc_det();
             println!();
         }
         if argument == "pk_lwe_add" {
@@ -1643,7 +1806,7 @@ fn main() {
         }
         if argument == "sk_glwe_enc_det" {
             println!("Testing encrypt_glwe_ciphertext_ret_noise");
-            test_sk_glwe_enc_ret_mask_and_noise();
+            test_sk_glwe_enc_det();
             println!();
         }
         if argument == "sk_glwe_add" {
@@ -1663,14 +1826,24 @@ fn main() {
         }
         if argument == "sk_ggsw_enc_det" {
             println!("Testing encrypt_constant_seeded_ggsw_ciphertext");
-            test_sk_ggsw_enc_ret_mask_and_noise();
+            test_sk_ggsw_enc_det();
             println!();
         }
-        // if argument == "lwe_pbs_det" {
-        //     println!("Testing programmable bootstrapping");
-        //     test_pbs_det();
-        //     println!();
-        // }
+        if argument == "sk_ggsw_par_enc" {
+            println!("Testing par_encrypt_constant_seeded_ggsw_ciphertext");
+            test_sk_ggsw_par_enc();
+            println!();
+        }
+        if argument == "sk_ggsw_par_enc_det" {
+            println!("Testing par_encrypt_constant_seeded_ggsw_ciphertext");
+            test_sk_ggsw_par_enc_det();
+            println!();
+        }
+        if argument == "lwe_pbs_det" {
+            println!("Testing programmable bootstrapping");
+            test_pbs_det();
+            println!();
+        }
 
     }
 }

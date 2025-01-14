@@ -50,7 +50,8 @@ pub fn encrypt_lwe_ciphertext_ret_noise<Scalar, NoiseDistribution, KeyCont, Outp
 // ) -> SecretKeyRandomVectors<Scalar, OutputCont>
 // ) -> (LweMask<&mut [Scalar]>, Vec<Scalar>)
 // ) -> Vec<Scalar>
-) -> Scalar
+// ) -> Scalar
+) -> LweBody<Scalar>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -89,7 +90,8 @@ pub fn fill_lwe_mask_and_body_for_encryption_ret_noise<Scalar, NoiseDistribution
 // ) -> SecretKeyRandomVectors<Scalar, OutputCont>
 // ) -> (LweMask<&mut [Scalar]>, Vec<Scalar>)
 // ) -> Vec<Scalar>
-) -> Scalar
+// ) -> Scalar
+) -> LweBody<Scalar>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -138,7 +140,8 @@ pub fn fill_lwe_mask_and_body_for_encryption_native_mod_compatible_ret_noise<
 // ) -> SecretKeyRandomVectors<Scalar, OutputCont>
 // ) -> (LweMask<&mut [Scalar]>, Vec<Scalar>)
 // ) -> Vec<Scalar>
-) -> Scalar
+// ) -> Scalar
+) -> LweBody<Scalar>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -191,7 +194,8 @@ where
     //     noise: vec![noise]
     // }
 
-    noise
+    // noise
+    LweBody::new(noise, ciphertext_modulus)
 }
 
 pub fn encrypt_lwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont, OutputCont, Gen>(
@@ -201,7 +205,8 @@ pub fn encrypt_lwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont, 
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     mask: &LweMask<&[Scalar]>,
-    noise: Scalar,
+    // noise: Scalar,
+    noise: LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -239,7 +244,8 @@ pub fn fill_lwe_mask_and_body_for_encryption_deterministic<Scalar, NoiseDistribu
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     mask: &LweMask<&[Scalar]>,
-    noise: Scalar,
+    // noise: Scalar,
+    noise: LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -286,7 +292,8 @@ pub fn fill_lwe_mask_and_body_for_encryption_native_mod_compatible_deterministic
     _noise_distribution: NoiseDistribution,
     _generator: &mut EncryptionRandomGenerator<Gen>,
     mask: &LweMask<&[Scalar]>,
-    noise: Scalar,
+    // noise: Scalar,
+    noise: LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -335,7 +342,8 @@ pub fn fill_lwe_mask_and_body_for_encryption_native_mod_compatible_deterministic
         CiphertextModulusKind::Other => unreachable!(),
     };
     // (2)
-    *output_body.data = (*output_body.data).wrapping_add(mask_key_dot_product).wrapping_add(noise);
+    *output_body.data = (*output_body.data).wrapping_add(mask_key_dot_product).wrapping_add(noise.data);
+    // *output_body.data = (*output_body.data).wrapping_add(mask_key_dot_product).wrapping_add(noise);
 }
 
 pub fn encrypt_glwe_ciphertext_ret_noise<Scalar, NoiseDistribution, KeyCont, InputCont, OutputCont, Gen>(
@@ -344,7 +352,10 @@ pub fn encrypt_glwe_ciphertext_ret_noise<Scalar, NoiseDistribution, KeyCont, Inp
     input_plaintext_list: &PlaintextList<InputCont>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> Vec<Scalar>
+// ) -> Vec<Scalar>
+// ) -> GlweBody<BodyCont>
+// ) -> GlweBody<NoiseCont>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -352,6 +363,9 @@ where
     InputCont: Container<Element = Scalar>,
     OutputCont: ContainerMut<Element = Scalar>,
     Gen: ByteRandomGenerator,
+    // BodyCont: ContainerMut<Element = Scalar>,
+    // NoiseCont: ContainerMut<Element = Scalar>,
+    // NoiseCont: Container<Element = Scalar>,
 {
     assert!(
         output_glwe_ciphertext.polynomial_size().0 == input_plaintext_list.plaintext_count().0,
@@ -395,6 +409,7 @@ pub fn fill_glwe_mask_and_body_for_encryption_ret_noise<
     BodyCont,
     MaskCont,
     Gen,
+    // NoiseCont,
 >(
     glwe_secret_key: &GlweSecretKey<KeyCont>,
     output_mask: &mut GlweMask<MaskCont>,
@@ -402,7 +417,10 @@ pub fn fill_glwe_mask_and_body_for_encryption_ret_noise<
     encoded: &PlaintextList<InputCont>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> Vec<Scalar>
+// ) -> Vec<Scalar>
+// ) -> GlweBody<BodyCont>
+// ) -> GlweBody<NoiseCont>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -411,6 +429,8 @@ where
     BodyCont: ContainerMut<Element = Scalar>,
     MaskCont: ContainerMut<Element = Scalar>,
     Gen: ByteRandomGenerator,
+    // NoiseCont: ContainerMut<Element = Scalar>,
+    // NoiseCont: Container<Element = Scalar>,
 {
     let ciphertext_modulus = output_body.ciphertext_modulus();
 
@@ -436,6 +456,7 @@ pub fn fill_glwe_mask_and_body_for_encryption_native_mod_compatible_ret_noise<
     BodyCont,
     MaskCont,
     Gen,
+    // NoiseCont,
 >(
     glwe_secret_key: &GlweSecretKey<KeyCont>,
     output_mask: &mut GlweMask<MaskCont>,
@@ -443,7 +464,11 @@ pub fn fill_glwe_mask_and_body_for_encryption_native_mod_compatible_ret_noise<
     encoded: &PlaintextList<InputCont>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> Vec<Scalar>
+// ) -> Vec<Scalar>
+// ) -> GlweBody<BodyCont>
+// ) -> GlweBody<NoiseCont>
+// ) -> GlweBody<Container<Scalar>>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -452,6 +477,7 @@ where
     BodyCont: ContainerMut<Element = Scalar>,
     MaskCont: ContainerMut<Element = Scalar>,
     Gen: ByteRandomGenerator,
+    // NoiseCont: ContainerMut<Element = Scalar>,
 {
     assert_eq!(
         output_mask.ciphertext_modulus(),
@@ -472,6 +498,9 @@ where
         ciphertext_modulus,
     );
     let mut noise = output_body.as_ref().to_vec();
+    // let mut noise = output_body.as_mut();
+    // let mut noise = output_body.clone();
+    // let mut noise = GlweBody::from_container(output_body.as_ref(), output_body.ciphertext_modulus());
 
     polynomial_wrapping_add_assign(
         &mut output_body.as_mut_polynomial(),
@@ -482,8 +511,9 @@ where
         let torus_scaling = ciphertext_modulus.get_power_of_two_scaling_to_native_torus();
         slice_wrapping_scalar_mul_assign(output_mask.as_mut(), torus_scaling);
         slice_wrapping_scalar_mul_assign(output_body.as_mut(), torus_scaling);
+        // slice_wrapping_scalar_mul_assign(noise.as_mut(), torus_scaling);
         slice_wrapping_scalar_mul_assign(&mut noise, torus_scaling);
-    }
+    }    
 
     polynomial_wrapping_add_multisum_assign(
         &mut output_body.as_mut_polynomial(),
@@ -491,7 +521,8 @@ where
         &glwe_secret_key.as_polynomial_list(),
     );
 
-    noise
+    // noise
+    GlweBody::from_container(noise, ciphertext_modulus)
 }
 
 pub fn encrypt_glwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont, InputCont, OutputCont, Gen>(
@@ -502,7 +533,7 @@ pub fn encrypt_glwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont,
     generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<&[Scalar]>,
     // deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -564,7 +595,7 @@ pub fn fill_glwe_mask_and_body_for_encryption_deterministic<
     generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<&[Scalar]>,
     // deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -609,7 +640,7 @@ pub fn fill_glwe_mask_and_body_for_encryption_native_mod_compatible_deterministi
     _generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<&[Scalar]>,
     // deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -660,7 +691,7 @@ pub fn fill_glwe_mask_and_body_for_encryption_native_mod_compatible_deterministi
     );
 }
 
-pub fn encrypt_constant_seeded_ggsw_ciphertext_ret_noise<
+pub fn encrypt_constant_seeded_ggsw_ciphertext_ret_mask_and_noise<
     Scalar,
     NoiseDistribution,
     KeyCont,
@@ -674,7 +705,8 @@ pub fn encrypt_constant_seeded_ggsw_ciphertext_ret_noise<
     noise_seeder: &mut NoiseSeeder,
 // )
 // ) -> Vec<Vec<Scalar>>
-) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+// ) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<GlweBody<Vec<Scalar>>>)
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -704,7 +736,7 @@ where
         noise_seeder,
     );
 
-    encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_noise(
+    encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_mask_and_noise(
         glwe_secret_key,
         output,
         cleartext,
@@ -713,7 +745,7 @@ where
     )
 }
 
-pub fn encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_noise<
+pub fn encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_mask_and_noise<
     Scalar,
     NoiseDistribution,
     KeyCont,
@@ -727,7 +759,8 @@ pub fn encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_noise
     generator: &mut EncryptionRandomGenerator<Gen>,
 // )
 // ) -> Vec<Vec<Scalar>>
-) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+// ) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<GlweBody<Vec<Scalar>>>)
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -746,8 +779,17 @@ where
     let glwe_size = output.glwe_size();
     let ciphertext_modulus = output.ciphertext_modulus();
     // let mut noise_vector = vec![Scalar::ZERO; ggsw_ciphertext_encryption_noise_sample_count(glwe_size, polynomial_size, decomp_level_count).0];
-    let mut noise_vector = vec![vec![Scalar::ZERO; polynomial_size.0]; 
-                                glwe_size.0 * decomp_level_count.0];
+    // let mut noise_vector = vec![vec![Scalar::ZERO; polynomial_size.0]; 
+    //                             glwe_size.0 * decomp_level_count.0];
+    let mut noise_vector = vec![GlweBody::from_container(
+                                    vec![
+                                        Scalar::ZERO;
+                                        polynomial_size.0
+                                    ],
+                                    // polynomial_size,
+                                    ciphertext_modulus,
+                                ); 
+                               glwe_size.0 * decomp_level_count.0];
     let mut mask_vector = vec![GlweMask::from_container(
                                     vec![
                                         Scalar::ZERO;
@@ -800,7 +842,7 @@ where
             //     row_as_glwe.polynomial_size(),
             //     row_as_glwe.ciphertext_modulus(),
             // );
-            (mask_vector[(last_row_index+1) * output_index + row_index], noise_vector[(last_row_index+1) * output_index + row_index]) = encrypt_constant_seeded_ggsw_level_matrix_row_ret_noise(
+            (mask_vector[(last_row_index+1) * output_index + row_index], noise_vector[(last_row_index+1) * output_index + row_index]) = encrypt_constant_seeded_ggsw_level_matrix_row_ret_mask_and_noise(
                 glwe_secret_key,
                 (row_index, last_row_index),
                 factor,
@@ -826,7 +868,44 @@ where
     // noise_vector
 }
 
-fn encrypt_constant_seeded_ggsw_level_matrix_row_ret_noise<
+fn encrypt_constant_seeded_ggsw_level_matrix_row_update_mask_and_noise<
+// fn encrypt_constant_seeded_ggsw_level_matrix_row<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    Gen,
+    // C,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    (row_index, last_row_index): (usize, usize),
+    factor: Scalar,
+    row_as_glwe: &mut SeededGlweCiphertext<OutputCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &mut GlweMask<Vec<Scalar>>,
+    // noise_vector: &mut Vec<Scalar>,
+    noise_vector: &mut GlweBody<Vec<Scalar>>,
+)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    KeyCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+    // C: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    (*mask_vector, *noise_vector) = encrypt_constant_seeded_ggsw_level_matrix_row_ret_mask_and_noise(
+                                        glwe_secret_key,
+                                        (row_index, last_row_index),
+                                        factor,
+                                        row_as_glwe,
+                                        noise_distribution,
+                                        generator,
+                                    );
+}
+
+fn encrypt_constant_seeded_ggsw_level_matrix_row_ret_mask_and_noise<
 // fn encrypt_constant_seeded_ggsw_level_matrix_row<
     Scalar,
     NoiseDistribution,
@@ -842,7 +921,8 @@ fn encrypt_constant_seeded_ggsw_level_matrix_row_ret_noise<
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
 // ) -> Vec<Scalar>
-) -> (GlweMask<Vec<Scalar>>, Vec<Scalar>)
+// ) -> (GlweMask<Vec<Scalar>>, Vec<Scalar>)
+) -> (GlweMask<Vec<Scalar>>, GlweBody<Vec<Scalar>>)
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -909,7 +989,8 @@ pub fn encrypt_seeded_glwe_ciphertext_assign_with_existing_generator_ret_noise<
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
 // ) -> Vec<Scalar>
-) -> (GlweMask<Vec<Scalar>>, Vec<Scalar>)
+// ) -> (GlweMask<Vec<Scalar>>, Vec<Scalar>)
+) -> (GlweMask<Vec<Scalar>>, GlweBody<Vec<Scalar>>)
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -970,7 +1051,8 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_ret_noise<
     output_body: &mut GlweBody<BodyCont>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> Vec<Scalar>
+// ) -> Vec<Scalar>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1007,7 +1089,8 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_native_mod_compatible_ret_n
     output_body: &mut GlweBody<BodyCont>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> Vec<Scalar>
+// ) -> Vec<Scalar>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1065,7 +1148,8 @@ where
     // println!("output_body: {:?}", output_body.as_polynomial());
     // Ensure that noise is not updated here.
     // println!("noise: {:?}", noise);
-    noise
+    // noise
+    GlweBody::from_container(noise, ciphertext_modulus)
 
 }
 
@@ -1082,7 +1166,9 @@ pub fn encrypt_constant_seeded_ggsw_ciphertext_deterministic<
     noise_distribution: NoiseDistribution,
     noise_seeder: &mut NoiseSeeder,
     mask_vector: &Vec<GlweMask<Vec<Scalar>>>,
-    noise_vector: &Vec<Vec<Scalar>>,
+    // noise_vector: &Vec<Vec<Scalar>>,
+    noise_vector: &Vec<GlweBody<Vec<Scalar>>>,
+
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1136,7 +1222,8 @@ pub fn encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_determini
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     mask_vector: &Vec<GlweMask<Vec<Scalar>>>,
-    noise_vector: &Vec<Vec<Scalar>>,
+    // noise_vector: &Vec<Vec<Scalar>>,
+    noise_vector: &Vec<GlweBody<Vec<Scalar>>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1207,7 +1294,8 @@ fn encrypt_constant_seeded_ggsw_level_matrix_row_deterministic<
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
+    // deterministic_noise: &Vec<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1274,7 +1362,8 @@ pub fn encrypt_seeded_glwe_ciphertext_assign_with_existing_generator_determinist
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
+    // deterministic_noise: &Vec<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1335,7 +1424,8 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_deterministic<
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    // deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1374,7 +1464,8 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_native_mod_compatible_deter
     _noise_distribution: NoiseDistribution,
     _generator: &mut EncryptionRandomGenerator<Gen>,
     deterministic_mask: &GlweMask<Vec<Scalar>>,
-    deterministic_noise: &Vec<Scalar>,
+    // deterministic_noise: &Vec<Scalar>,
+    deterministic_noise: &GlweBody<Vec<Scalar>>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -1403,7 +1494,8 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_native_mod_compatible_deter
         // slice_wrapping_scalar_mul_assign(output_mask.as_mut(), torus_scaling);
         slice_wrapping_scalar_mul_assign(output_body.as_mut(), torus_scaling);
     }
-    slice_wrapping_add_assign(output_body.as_mut(), deterministic_noise);
+    slice_wrapping_add_assign(output_body.as_mut(), deterministic_noise.as_ref());
+    // slice_wrapping_add_assign(output_body.as_mut(), deterministic_noise);
     // output_body.as_mut().copy_from_slice(deterministic_noise);    
 
     // output_body =  deterministic_noise + output_mask * glwe_secret_key
@@ -1421,13 +1513,545 @@ pub fn fill_glwe_mask_and_body_for_encryption_assign_native_mod_compatible_deter
     // println!("output_body: {:?}", output_body.as_polynomial());
 }
 
+pub fn par_encrypt_constant_seeded_ggsw_ciphertext_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    NoiseSeeder,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    output: &mut SeededGgswCiphertext<OutputCont>,
+    cleartext: Cleartext<Scalar>,
+    noise_distribution: NoiseDistribution,
+    noise_seeder: &mut NoiseSeeder,
+// ) 
+// ) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+// ) -> (Vec<Vec<GlweMask<Vec<Scalar>>>>, Vec<Vec<Vec<Scalar>>>)
+) -> (Vec<Vec<GlweMask<Vec<Scalar>>>>, Vec<Vec<GlweBody<Vec<Scalar>>>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    // Maybe Sized allows to pass Box<dyn Seeder>.
+    NoiseSeeder: Seeder + ?Sized,
+{
+    assert!(
+        output.polynomial_size() == glwe_secret_key.polynomial_size(),
+        "Mismatch between polynomial sizes of output ciphertexts and input secret key. \
+        Got {:?} in output, and {:?} in secret key.",
+        output.polynomial_size(),
+        glwe_secret_key.polynomial_size()
+    );
+
+    assert!(
+        output.glwe_size().to_glwe_dimension() == glwe_secret_key.glwe_dimension(),
+        "Mismatch between GlweDimension of output ciphertexts and input secret key. \
+        Got {:?} in output, and {:?} in secret key.",
+        output.glwe_size().to_glwe_dimension(),
+        glwe_secret_key.glwe_dimension()
+    );
+
+    let mut generator = EncryptionRandomGenerator::<DefaultRandomGenerator>::new(
+        output.compression_seed().seed,
+        noise_seeder,
+    );
+
+    par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_mask_and_noise(
+        glwe_secret_key,
+        output,
+        cleartext,
+        noise_distribution,
+        &mut generator,
+    )
+}
+
+pub fn par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_update_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    Gen,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    output: &mut SeededGgswCiphertext<OutputCont>,
+    cleartext: Cleartext<Scalar>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &mut Vec<Vec<GlweMask<Vec<Scalar>>>>,
+    // noise_vector: &mut  Vec<Vec<Vec<Scalar>>>,
+    noise_vector: &mut  Vec<Vec<GlweBody<Vec<Scalar>>>>,
+) 
+// ) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    Gen: ParallelByteRandomGenerator,
+{
+    (*mask_vector, *noise_vector) = par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_mask_and_noise(
+                                        glwe_secret_key,
+                                        output,
+                                        cleartext,
+                                        noise_distribution,
+                                        generator,
+                                    );
+}
+
+pub fn par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    Gen,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    output: &mut SeededGgswCiphertext<OutputCont>,
+    cleartext: Cleartext<Scalar>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+// ) 
+// ) -> (Vec<GlweMask<Vec<Scalar>>>, Vec<Vec<Scalar>>)
+// ) -> (Vec<Vec<GlweMask<Vec<Scalar>>>>, Vec<Vec<Vec<Scalar>>>)
+) -> (Vec<Vec<GlweMask<Vec<Scalar>>>>, Vec<Vec<GlweBody<Vec<Scalar>>>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    Gen: ParallelByteRandomGenerator,
+{
+    // Generators used to have same sequential and parallel key generation
+    let gen_iter = generator
+        .par_try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .expect("Failed to split generator into ggsw levels");
+
+    let decomp_base_log = output.decomposition_base_log();
+    let decomp_level_count = output.decomposition_level_count();
+    let polynomial_size = output.polynomial_size();
+    let glwe_size = output.glwe_size();
+    let ciphertext_modulus = output.ciphertext_modulus();
+
+    // Ensure 3D vectors for masks and noise
+    // let mut noise_vector = 
+    //     vec![
+    //         vec![
+    //             vec![Scalar::ZERO;
+    //                 polynomial_size.0];
+    //             glwe_size.0
+    //         ]; 
+    //     decomp_level_count.0
+    // ];
+    let mut noise_vector = 
+        vec![
+            vec![
+                GlweBody::from_container(
+                    vec![
+                        Scalar::ZERO;
+                        polynomial_size.0
+                    ],
+                    // polynomial_size,
+                    ciphertext_modulus,
+                );
+                glwe_size.0
+            ];
+        decomp_level_count.0
+    ];
+    let mut mask_vector = 
+        vec![
+            vec![
+                GlweMask::from_container(
+                    vec![
+                        Scalar::ZERO;
+                        glwe_ciphertext_mask_size(glwe_size.to_glwe_dimension(), polynomial_size)
+                    ],
+                    polynomial_size,
+                    ciphertext_modulus,
+                );
+                glwe_size.0
+            ];
+        decomp_level_count.0
+    ];
+
+    // Iterate over `output` with proper parallelization
+    output
+        .par_iter_mut()
+        .zip(gen_iter)
+        .enumerate()
+        .zip(mask_vector.par_iter_mut())
+        .zip(noise_vector.par_iter_mut())
+        .for_each(|(((output_index, (mut level_matrix, mut generator)), mask_chunk), noise_chunk)| {
+
+            let decomp_level = DecompositionLevel(decomp_level_count.0 - output_index);
+            let factor = ggsw_encryption_multiplicative_factor(
+                ciphertext_modulus,
+                decomp_level,
+                decomp_base_log,
+                cleartext,
+            );
+
+            // Split generator for each GLWE level
+            let gen_iter = generator
+                .par_try_fork_from_config(
+                    level_matrix.encryption_fork_config(Uniform, noise_distribution),
+                )
+                .expect("Failed to split generator into glwe");
+
+            let last_row_index = level_matrix.glwe_size().0 - 1;
+
+            // // Get 2D slices for `mask_vector` and `noise_vector`
+            // let mask_chunk = &mut mask_vector[output_index];
+            // let noise_chunk = &mut noise_vector[output_index];
+
+            level_matrix
+                .as_mut_seeded_glwe_list()
+                .par_iter_mut()
+                .enumerate()
+                .zip(gen_iter)
+                .zip(mask_chunk.par_iter_mut())
+                .zip(noise_chunk.par_iter_mut())
+                .for_each(|((((row_index, mut row_as_glwe), mut generator), mut mask_entry), mut noise_entry)| {
+                    // let mask_entry = &mut mask_chunk[row_index];
+                    // let noise_entry = &mut noise_chunk[row_index];
+
+                    encrypt_constant_seeded_ggsw_level_matrix_row_update_mask_and_noise(
+                        glwe_secret_key,
+                        (row_index, last_row_index),
+                        factor,
+                        &mut row_as_glwe,
+                        noise_distribution,
+                        &mut generator,
+                        &mut mask_entry,
+                        &mut noise_entry,
+                    );
+                });
+        });
+
+    (mask_vector, noise_vector)
+}
+
+pub fn par_encrypt_constant_seeded_ggsw_ciphertext_deterministic<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    NoiseSeeder,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    output: &mut SeededGgswCiphertext<OutputCont>,
+    cleartext: Cleartext<Scalar>,
+    noise_distribution: NoiseDistribution,
+    noise_seeder: &mut NoiseSeeder,
+    // mask_vector: &Vec<GlweMask<Vec<Scalar>>>,
+    // noise_vector: &Vec<Vec<Scalar>>,
+    mask_vector: &Vec<Vec<GlweMask<Vec<Scalar>>>>,
+    // noise_vector: &Vec<Vec<Vec<Scalar>>>,
+    noise_vector: &Vec<Vec<GlweBody<Vec<Scalar>>>>,
+) where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    // Maybe Sized allows to pass Box<dyn Seeder>.
+    NoiseSeeder: Seeder + ?Sized,
+{
+    assert!(
+        output.polynomial_size() == glwe_secret_key.polynomial_size(),
+        "Mismatch between polynomial sizes of output ciphertexts and input secret key. \
+        Got {:?} in output, and {:?} in secret key.",
+        output.polynomial_size(),
+        glwe_secret_key.polynomial_size()
+    );
+
+    assert!(
+        output.glwe_size().to_glwe_dimension() == glwe_secret_key.glwe_dimension(),
+        "Mismatch between GlweDimension of output ciphertexts and input secret key. \
+        Got {:?} in output, and {:?} in secret key.",
+        output.glwe_size().to_glwe_dimension(),
+        glwe_secret_key.glwe_dimension()
+    );
+
+    let mut generator = EncryptionRandomGenerator::<DefaultRandomGenerator>::new(
+        output.compression_seed().seed,
+        noise_seeder,
+    );
+
+    par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_deterministic(
+        glwe_secret_key,
+        output,
+        cleartext,
+        noise_distribution,
+        &mut generator,
+        mask_vector,
+        noise_vector,
+    );
+}
+
+pub fn par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_deterministic<
+    Scalar,
+    NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    Gen,
+>(
+    glwe_secret_key: &GlweSecretKey<KeyCont>,
+    output: &mut SeededGgswCiphertext<OutputCont>,
+    cleartext: Cleartext<Scalar>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    // mask_vector: &Vec<GlweMask<Vec<Scalar>>>,
+    // noise_vector: &Vec<Vec<Scalar>>,
+    mask_vector: &Vec<Vec<GlweMask<Vec<Scalar>>>>,
+    // noise_vector: &Vec<Vec<Vec<Scalar>>>,
+    noise_vector: &Vec<Vec<GlweBody<Vec<Scalar>>>>,
+) where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    Gen: ParallelByteRandomGenerator,
+{
+    // Generators used to have same sequential and parallel key generation
+    let gen_iter = generator
+        .par_try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .expect("Failed to split generator into ggsw levels");
+
+    let decomp_base_log = output.decomposition_base_log();
+    let decomp_level_count = output.decomposition_level_count();
+    let ciphertext_modulus = output.ciphertext_modulus();
+
+    output.par_iter_mut().zip(gen_iter).enumerate().for_each(
+        |(output_index, (mut level_matrix, mut generator))| {
+            let decomp_level = DecompositionLevel(decomp_level_count.0 - output_index);
+            let factor = ggsw_encryption_multiplicative_factor(
+                ciphertext_modulus,
+                decomp_level,
+                decomp_base_log,
+                cleartext,
+            );
+
+            // We iterate over the rows of the level matrix, the last row needs special treatment
+            let gen_iter = generator
+                .par_try_fork_from_config(
+                    level_matrix.encryption_fork_config(Uniform, noise_distribution),
+                )
+                .expect("Failed to split generator into glwe");
+
+            let last_row_index = level_matrix.glwe_size().0 - 1;
+
+            level_matrix
+                .as_mut_seeded_glwe_list()
+                .par_iter_mut()
+                .enumerate()
+                .zip(gen_iter)
+                .for_each(|((row_index, mut row_as_glwe), mut generator)| {
+                    encrypt_constant_seeded_ggsw_level_matrix_row_deterministic(
+                    // encrypt_constant_seeded_ggsw_level_matrix_row(
+                        glwe_secret_key,
+                        (row_index, last_row_index),
+                        factor,
+                        &mut row_as_glwe,
+                        noise_distribution,
+                        &mut generator,
+                        // &mask_vector[(last_row_index+1) * output_index + row_index],
+                        // &noise_vector[(last_row_index+1) * output_index + row_index],
+                        &mask_vector[output_index][row_index],
+                        &noise_vector[output_index][row_index],
+                    );
+                });
+        },
+    );
+}
+
+pub fn par_allocate_and_generate_new_seeded_lwe_bootstrap_key_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    NoiseSeeder,
+>(
+    input_lwe_secret_key: &LweSecretKey<InputKeyCont>,
+    output_glwe_secret_key: &GlweSecretKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    noise_distribution: NoiseDistribution,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    noise_seeder: &mut NoiseSeeder,
+// ) -> (SeededLweBootstrapKeyOwned<Scalar>, Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>, Vec<Vec<Vec<Vec<Scalar>>>>)
+) -> (SeededLweBootstrapKeyOwned<Scalar>, Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>, Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    // Maybe Sized allows to pass Box<dyn Seeder>.
+    NoiseSeeder: Seeder + ?Sized,
+{
+    let mut bsk = SeededLweBootstrapKeyOwned::new(
+        Scalar::ZERO,
+        output_glwe_secret_key.glwe_dimension().to_glwe_size(),
+        output_glwe_secret_key.polynomial_size(),
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_secret_key.lwe_dimension(),
+        noise_seeder.seed().into(),
+        ciphertext_modulus,
+    );
+
+    let (mask_vector, noise_vector) = par_generate_seeded_lwe_bootstrap_key_ret_mask_and_noise(
+        input_lwe_secret_key,
+        output_glwe_secret_key,
+        &mut bsk,
+        noise_distribution,
+        noise_seeder,
+    );
+
+    (bsk, mask_vector, noise_vector)
+}
+
+pub fn par_generate_seeded_lwe_bootstrap_key_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    OutputCont,
+    NoiseSeeder,
+>(
+    input_lwe_secret_key: &LweSecretKey<InputKeyCont>,
+    output_glwe_secret_key: &GlweSecretKey<OutputKeyCont>,
+    output: &mut SeededLweBootstrapKey<OutputCont>,
+    noise_distribution: NoiseDistribution,
+    noise_seeder: &mut NoiseSeeder,
+// ) -> (Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>, Vec<Vec<Vec<Vec<Scalar>>>>)
+) -> (Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>, Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    NoiseDistribution: Distribution + Sync,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    // Maybe Sized allows to pass Box<dyn Seeder>.
+    NoiseSeeder: Seeder + ?Sized,
+{
+    assert!(
+        output.input_lwe_dimension() == input_lwe_secret_key.lwe_dimension(),
+        "Mismatched LweDimension between input LWE secret key and LWE bootstrap key. \
+        Input LWE secret key LweDimension: {:?}, LWE bootstrap key input LweDimension {:?}.",
+        input_lwe_secret_key.lwe_dimension(),
+        output.input_lwe_dimension()
+    );
+
+    assert!(
+        output.glwe_size() == output_glwe_secret_key.glwe_dimension().to_glwe_size(),
+        "Mismatched GlweSize between output GLWE secret key and LWE bootstrap key. \
+        Output GLWE secret key GlweSize: {:?}, LWE bootstrap key GlweSize {:?}.",
+        output_glwe_secret_key.glwe_dimension().to_glwe_size(),
+        output.glwe_size()
+    );
+
+    assert!(
+        output.polynomial_size() == output_glwe_secret_key.polynomial_size(),
+        "Mismatched PolynomialSize between output GLWE secret key and LWE bootstrap key. \
+        Output GLWE secret key PolynomialSize: {:?}, LWE bootstrap key PolynomialSize {:?}.",
+        output_glwe_secret_key.polynomial_size(),
+        output.polynomial_size()
+    );
+
+    let mut generator = EncryptionRandomGenerator::<DefaultRandomGenerator>::new(
+        output.compression_seed().seed,
+        noise_seeder,
+    );
+
+    let gen_iter = generator
+        .par_try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .unwrap();
+
+    // Ensure 4D vectors for masks and noise
+    let polynomial_size = output.polynomial_size();
+    let glwe_size = output.glwe_size();
+    let decomp_level_count = output.decomposition_level_count();
+    let input_lwe_dimension = output.input_lwe_dimension();
+    let ciphertext_modulus = output.ciphertext_modulus();
+    // let mut noise_vector = 
+    //     vec![
+    //         vec![
+    //             vec![
+    //                 vec![Scalar::ZERO;
+    //                     polynomial_size.0];
+    //                 glwe_size.0
+    //             ]; 
+    //         decomp_level_count.0
+    //         ];
+    //     input_lwe_dimension.0
+    // ];
+    let mut noise_vector = 
+        vec![
+            vec![
+                vec![
+                    GlweBody::from_container(
+                        vec![
+                            Scalar::ZERO;
+                            polynomial_size.0
+                        ],
+                        // polynomial_size,
+                        ciphertext_modulus,
+                    );
+                    glwe_size.0
+                ];
+            decomp_level_count.0
+            ];
+        input_lwe_dimension.0
+    ];
+    let mut mask_vector = 
+        vec![
+            vec![
+                vec![
+                    GlweMask::from_container(
+                        vec![
+                            Scalar::ZERO;
+                            glwe_ciphertext_mask_size(glwe_size.to_glwe_dimension(), polynomial_size)
+                        ],
+                        polynomial_size,
+                        ciphertext_modulus,
+                    );
+                    glwe_size.0
+                ];
+            decomp_level_count.0
+            ];
+        input_lwe_dimension.0
+    ];
+
+    output
+        .par_iter_mut()
+        .zip(input_lwe_secret_key.as_ref().par_iter())
+        .zip(gen_iter)
+        .zip(mask_vector.par_iter_mut())
+        .zip(noise_vector.par_iter_mut())
+        .for_each(|((((mut ggsw, &input_key_element), mut generator), mut mask_chunk), mut noise_chunk)| {
+            par_encrypt_constant_seeded_ggsw_ciphertext_with_existing_generator_update_mask_and_noise(
+                output_glwe_secret_key,
+                &mut ggsw,
+                Cleartext(input_key_element),
+                noise_distribution,
+                &mut generator,
+                &mut mask_chunk,
+                &mut noise_chunk,
+            );
+        });
+    (mask_vector, noise_vector)
+}
+
+
 pub fn allocate_and_encrypt_new_lwe_ciphertext_ret_noise<Scalar, NoiseDistribution, KeyCont, Gen>(
     lwe_secret_key: &LweSecretKey<KeyCont>,
     encoded: Plaintext<Scalar>,
     noise_distribution: NoiseDistribution,
     ciphertext_modulus: CiphertextModulus<Scalar>,
     generator: &mut EncryptionRandomGenerator<Gen>,
-) -> (LweCiphertextOwned<Scalar>, Scalar)
+// ) -> (LweCiphertextOwned<Scalar>, Scalar)
+) -> (LweCiphertextOwned<Scalar>, LweBody<Scalar>)
 where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,

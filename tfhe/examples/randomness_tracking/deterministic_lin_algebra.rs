@@ -71,15 +71,23 @@ pub fn lwe_ciphertext_add_mask<Scalar>(
 }
 
 pub fn lwe_ciphertext_add_noise<Scalar>(
-    lhs: &Scalar,
-    rhs: &Scalar,
-) -> Scalar
+    lhs: &LweBody<Scalar>,
+    rhs: &LweBody<Scalar>,
+) -> LweBody<Scalar>
 where
     Scalar: UnsignedInteger,
 {
+    assert_eq!(
+        lhs.ciphertext_modulus(),
+        rhs.ciphertext_modulus(),
+        "Mismatched ciphertext modulus between lhs ({:?}) and rhs ({:?}) LWE noises",
+        lhs.ciphertext_modulus(),
+        rhs.ciphertext_modulus()
+    );
+
     let mut output = Scalar::ZERO;
-    output = output.wrapping_add(*lhs).wrapping_add(*rhs);
-    output
+    output = output.wrapping_add(lhs.data).wrapping_add(rhs.data);
+    LweBody::new(output, lhs.ciphertext_modulus())
 }
 
 pub fn glwe_ciphertext_add_mask<Scalar>(
@@ -124,22 +132,29 @@ pub fn glwe_ciphertext_add_mask<Scalar>(
 }
 
 pub fn glwe_ciphertext_add_noise<Scalar>(
-    lhs: &Vec<Scalar>,
-    rhs: &Vec<Scalar>,
-) -> Vec<Scalar>
+    lhs: &GlweBody<Vec<Scalar>>,
+    rhs: &GlweBody<Vec<Scalar>>,
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: UnsignedInteger,
 {
     assert_eq!(
-        lhs.len(),
-        rhs.len(),
-        "Mismatched vector length between lhs ({:?}) and rhs ({:?}) GLWE noises",
-        lhs.len(),
-        rhs.len()
+        lhs.as_ref().container_len(),
+        rhs.as_ref().container_len(),
+        "Mismatched container length between lhs ({:?}) and rhs ({:?}) GlweBody noises",
+        lhs.as_ref().container_len(),
+        rhs.as_ref().container_len()
     );
-    let mut output = vec![Scalar::ZERO; lhs.len()];
-    slice_wrapping_add(&mut output, lhs, rhs);
-    output
+    assert_eq!(
+        lhs.ciphertext_modulus(),
+        rhs.ciphertext_modulus(),
+        "Mismatched ciphertext_modulus between lhs ({:?}) and rhs ({:?}) GlweBody noises",
+        lhs.ciphertext_modulus(),
+        rhs.ciphertext_modulus()
+    );
+    let mut output = vec![Scalar::ZERO; lhs.as_ref().container_len()];
+    slice_wrapping_add(&mut output, lhs.as_ref(), rhs.as_ref());
+    GlweBody::from_container(output, lhs.ciphertext_modulus())
 }
 
 pub fn lwe_ciphertext_cleartext_mul_pk_random_vectors<Scalar>(
@@ -180,16 +195,17 @@ pub fn lwe_ciphertext_cleartext_mul_mask<Scalar>(
 }
 
 pub fn lwe_ciphertext_cleartext_mul_noise<Scalar>(
-    lhs: &Scalar,
+    lhs: &LweBody<Scalar>,
     rhs: &Scalar,
-) -> Scalar
+) -> LweBody<Scalar>
 where
     Scalar: UnsignedInteger,
 {
 
     let mut output = Scalar::ZERO;
-    output = output.wrapping_add(*lhs).wrapping_mul(*rhs);
-    output
+    output = output.wrapping_add(lhs.data).wrapping_mul(*rhs);
+    LweBody::new(output, lhs.ciphertext_modulus())
+    // output
 }
 
 pub fn glwe_ciphertext_cleartext_mul_mask<Scalar>(
@@ -219,13 +235,13 @@ pub fn glwe_ciphertext_cleartext_mul_mask<Scalar>(
 }
 
 pub fn glwe_ciphertext_cleartext_mul_noise<Scalar>(
-    lhs: &Vec<Scalar>,
+    lhs: &GlweBody<Vec<Scalar>>,
     rhs: &Scalar,
-) -> Vec<Scalar>
+) -> GlweBody<Vec<Scalar>>
 where
     Scalar: UnsignedInteger,
 {
-    let mut output = vec![Scalar::ZERO; lhs.len()];
+    let mut output = vec![Scalar::ZERO; lhs.as_ref().container_len()];
     slice_wrapping_add_scalar_mul_assign(&mut output, lhs.as_ref(), *rhs);
-    output
+    GlweBody::from_container(output, lhs.ciphertext_modulus())
 }
