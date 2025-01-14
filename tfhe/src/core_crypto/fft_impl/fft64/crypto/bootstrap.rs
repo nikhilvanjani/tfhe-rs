@@ -24,6 +24,10 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use tfhe_fft::c64;
 use tfhe_versionable::Versionize;
 
+use crate::core_crypto::prelude::Encryptable;
+use crate::core_crypto::commons::math::random::Uniform;
+use crate::core_crypto::prelude::UnsignedInteger;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Versionize)]
 #[serde(bound(deserialize = "C: IntoContainerOwned"))]
 #[versionize(FourierLweBootstrapKeyVersions)]
@@ -365,6 +369,116 @@ impl FourierLweBootstrapKeyView<'_> {
                 .iter_mut()
                 .for_each(|x| *x = signed_decomposer.closest_representable(*x));
         }
+    }
+
+    pub fn blind_rotate_assign_ret_noise<InputScalar, OutputScalar, Scalar>(
+        self,
+        mut lut: GlweCiphertextMutView<'_, OutputScalar>,
+        lwe: LweCiphertextView<'_, InputScalar>,
+        fft: FftView<'_>,
+        stack: &mut PodStack,
+        // input_mask: &LweMask<InputCont>,
+        input_mask: &LweMask<&[Scalar]>,
+        input_noise: &LweBody<Scalar>,
+        // lut_mask: &GlweMask<OutputCont>,
+        // lut_noise: &GlweBody<OutputCont>,
+        bsk_mask_vector: Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>,
+        bsk_noise_vector: Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>,
+    // ) 
+    ) -> GlweBody<Vec<Scalar>>
+    // ) -> GlweBody<OutputCont>
+    where
+        InputScalar: UnsignedTorus + CastInto<usize>,
+        OutputScalar: UnsignedTorus,
+        // InputCont: Container<Element = InputScalar> + UnsignedInteger,
+        // InputCont: Container<Element = InputScalar>,
+        // OutputCont: ContainerMut<Element = OutputScalar>,
+        Scalar: UnsignedTorus,
+        // Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+        // Scalar: Encryptable<Uniform, Uniform> + Sync + Send,
+    {
+        let (lwe_mask, lwe_body) = lwe.get_mask_and_body();
+
+        let lut_poly_size = lut.polynomial_size();
+        let ciphertext_modulus = lut.ciphertext_modulus();
+        assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+        let monomial_degree = MonomialDegree(pbs_modulus_switch(*lwe_body.data, lut_poly_size));
+
+        lut.as_mut_polynomial_list()
+            .iter_mut()
+            .for_each(|mut poly| {
+                let (tmp_poly, _) = stack.make_aligned_raw(poly.as_ref().len(), CACHELINE_ALIGN);
+
+                let mut tmp_poly = Polynomial::from_container(&mut *tmp_poly);
+                tmp_poly.as_mut().copy_from_slice(poly.as_ref());
+                polynomial_wrapping_monic_monomial_div(&mut poly, &tmp_poly, monomial_degree);
+            });
+
+        // We initialize the ct_0 used for the successive cmuxes
+        let mut ct0 = lut;
+        let (ct1, stack) = stack.make_aligned_raw(ct0.as_ref().len(), CACHELINE_ALIGN);
+        let mut ct1 =
+            GlweCiphertextMutView::from_container(&mut *ct1, lut_poly_size, ciphertext_modulus);
+
+        for (lwe_mask_element, bootstrap_key_ggsw) in
+            izip!(lwe_mask.as_ref().iter(), self.into_ggsw_iter())
+        {
+            if *lwe_mask_element != InputScalar::ZERO {
+                let monomial_degree =
+                    MonomialDegree(pbs_modulus_switch(*lwe_mask_element, lut_poly_size));
+
+                // we effectively inline the body of cmux here, merging the initial subtraction
+                // operation with the monic polynomial multiplication, then performing the external
+                // product manually
+
+                // We rotate ct_1 and subtract ct_0 (first step of cmux) by performing
+                // ct_1 <- (ct_0 * X^{a_hat}) - ct_0
+                for (mut ct1_poly, ct0_poly) in izip!(
+                    ct1.as_mut_polynomial_list().iter_mut(),
+                    ct0.as_polynomial_list().iter(),
+                ) {
+                    polynomial_wrapping_monic_monomial_mul_and_subtract(
+                        &mut ct1_poly,
+                        &ct0_poly,
+                        monomial_degree,
+                    );
+                }
+
+                // as_mut_view is required to keep borrow rules consistent
+                // second step of cmux
+                add_external_product_assign(
+                    ct0.as_mut_view(),
+                    bootstrap_key_ggsw,
+                    ct1.as_view(),
+                    fft,
+                    stack,
+                );
+            }
+        }
+
+        if !ciphertext_modulus.is_native_modulus() {
+            // When we convert back from the fourier domain, integer values will contain up to 53
+            // MSBs with information. In our representation of power of 2 moduli < native modulus we
+            // fill the MSBs and leave the LSBs empty, this usage of the signed decomposer allows to
+            // round while keeping the data in the MSBs
+            let signed_decomposer = SignedDecomposer::new(
+                DecompositionBaseLog(ciphertext_modulus.get_custom_modulus().ilog2() as usize),
+                DecompositionLevelCount(1),
+            );
+            ct0.as_mut()
+                .iter_mut()
+                .for_each(|x| *x = signed_decomposer.closest_representable(*x));
+        }
+        // dummy return noise
+        let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+        if !ciphertext_modulus.is_native_modulus() {
+            new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+        }
+        let noise = GlweBody::from_container(
+            vec![Scalar::ZERO; lut_poly_size.0],
+            new_ciphertext_modulus
+            );
+        noise        
     }
 
     // CastInto required for PBS modulus switch which returns a usize

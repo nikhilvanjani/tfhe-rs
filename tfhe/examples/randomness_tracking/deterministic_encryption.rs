@@ -20,6 +20,10 @@ use tfhe::core_crypto::commons::math::decomposition::{
 };
 use tfhe::core_crypto::algorithms::*;
 use tfhe::core_crypto::algorithms::polynomial_algorithms::*;
+use tfhe_fft::c64;
+use tfhe::core_crypto::prelude::ComputationBuffers;
+use tfhe::core_crypto::fft_impl::fft64::math::fft::{Fft, FftView};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 
 
 // /// This struct stores random vectors that were generated during
@@ -2073,6 +2077,131 @@ where
     );
 
     (new_ct, noise)
+}
+
+pub fn blind_rotate_assign_ret_noise<
+    InputScalar, 
+    OutputScalar, 
+    InputCont, 
+    OutputCont, 
+    KeyCont, 
+    Scalar, 
+    // NoiseDistribution,
+>(
+    input: &LweCiphertext<InputCont>,
+    lut: &mut GlweCiphertext<OutputCont>,
+    fourier_bsk: &FourierLweBootstrapKey<KeyCont>,
+    // input_mask: &LweMask<InputCont>,
+    input_mask: &LweMask<&[Scalar]>,
+    input_noise: &LweBody<Scalar>,
+    // lut_mask: &GlweMask<OutputCont>,
+    // lut_noise: &GlweBody<OutputCont>,
+    bsk_mask_vector: Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>,
+    bsk_noise_vector: Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>,
+// )
+) -> GlweBody<Vec<Scalar>>
+// ) -> GlweBody<OutputCont>
+where
+    // CastInto required for PBS modulus switch which returns a usize
+    InputScalar: UnsignedTorus + CastInto<usize>,
+    OutputScalar: UnsignedTorus,
+    // InputCont: Container<Element = InputScalar> + UnsignedInteger,
+    InputCont: Container<Element = InputScalar>,
+    OutputCont: ContainerMut<Element = OutputScalar>,
+    KeyCont: Container<Element = c64>,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send + UnsignedTorus,
+    Scalar: UnsignedTorus,
+    // NoiseDistribution: Distribution,
+{
+    assert!(
+        input.ciphertext_modulus().is_power_of_two(),
+        "This operation requires the input to have a power of two modulus."
+    );
+    assert!(
+        lut.ciphertext_modulus().is_power_of_two(),
+        "This operation requires the lut to have a power of two modulus."
+    );
+
+    let mut buffers = ComputationBuffers::new();
+
+    let fft = Fft::new(fourier_bsk.polynomial_size());
+    let fft = fft.as_view();
+
+    buffers.resize(
+        blind_rotate_assign_mem_optimized_requirement::<OutputScalar>(
+            fourier_bsk.glwe_size(),
+            fourier_bsk.polynomial_size(),
+            fft,
+        )
+        .unwrap()
+        .unaligned_bytes_required(),
+    );
+
+    let stack = buffers.stack();
+
+    blind_rotate_assign_mem_optimized_ret_noise(input, lut, fourier_bsk, fft, stack, 
+        // input_mask, input_noise, lut_mask, lut_noise, bsk_mask_vector, bsk_noise_vector)
+        input_mask, input_noise, bsk_mask_vector, bsk_noise_vector)
+}
+
+pub fn blind_rotate_assign_mem_optimized_ret_noise<
+    InputScalar,
+    OutputScalar,
+    InputCont,
+    OutputCont,
+    KeyCont,
+    Scalar, 
+    // NoiseDistribution,
+>(
+    input: &LweCiphertext<InputCont>,
+    lut: &mut GlweCiphertext<OutputCont>,
+    fourier_bsk: &FourierLweBootstrapKey<KeyCont>,
+    fft: FftView<'_>,
+    stack: &mut PodStack,
+    // input_mask: &LweMask<InputCont>,
+    input_mask: &LweMask<&[Scalar]>,
+    input_noise: &LweBody<Scalar>,
+    // lut_mask: &GlweMask<OutputCont>,
+    // lut_noise: &GlweBody<OutputCont>,
+    bsk_mask_vector: Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>,
+    bsk_noise_vector: Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>,
+// ) 
+// ) -> GlweBody<OutputCont>
+) -> GlweBody<Vec<Scalar>>
+where
+    // CastInto required for PBS modulus switch which returns a usize
+    InputScalar: UnsignedTorus + CastInto<usize>,
+    OutputScalar: UnsignedTorus,
+    // InputCont: Container<Element = InputScalar> + UnsignedInteger,
+    InputCont: Container<Element = InputScalar>,
+    OutputCont: ContainerMut<Element = OutputScalar>,
+    KeyCont: Container<Element = c64>,
+    Scalar: UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    // NoiseDistribution: Distribution,
+{
+    assert!(
+        input.ciphertext_modulus().is_power_of_two(),
+        "This operation requires the input to have a power of two modulus."
+    );
+    assert!(
+        lut.ciphertext_modulus().is_power_of_two(),
+        "This operation requires the lut to have a power of two modulus."
+    );
+    assert_eq!(
+        input.lwe_size(),
+        fourier_bsk.input_lwe_dimension().to_lwe_size()
+    );
+    assert_eq!(lut.glwe_size(), fourier_bsk.glwe_size());
+    assert_eq!(lut.polynomial_size(), fourier_bsk.polynomial_size());
+
+    // Blind rotate assign manages the rounding to go back to the proper torus if the ciphertext
+    // modulus is not the native one
+    fourier_bsk
+        .as_view()
+        .blind_rotate_assign_ret_noise(lut.as_mut_view(), input.as_view(), fft, stack,
+            // input_mask, input_noise, lut_mask, lut_noise, bsk_mask_vector, bsk_noise_vector)
+            input_mask, input_noise, bsk_mask_vector, bsk_noise_vector)
 }
 
 
