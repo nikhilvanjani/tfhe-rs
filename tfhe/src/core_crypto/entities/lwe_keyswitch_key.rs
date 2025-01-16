@@ -7,6 +7,7 @@ use crate::core_crypto::backward_compatibility::entities::lwe_keyswitch_key::Lwe
 use crate::core_crypto::commons::parameters::*;
 use crate::core_crypto::commons::traits::*;
 use crate::core_crypto::entities::*;
+use crate::core_crypto::commons::generators::SecretRandomGeneratorForkConfig;
 
 /// An [`LWE keyswitch key`](`LweKeyswitchKey`).
 ///
@@ -285,6 +286,26 @@ impl<Scalar: UnsignedInteger, C: Container<Element = Scalar>> LweKeyswitchKey<C>
     pub fn ciphertext_modulus(&self) -> CiphertextModulus<C::Element> {
         self.ciphertext_modulus
     }
+
+    pub fn encryption_fork_config_with_public_key(
+        &self,
+        // mask_distribution: MaskDistribution,
+        input_key_lwe_dimension: LweDimension,
+        decomp_level_count: DecompositionLevelCount,
+        zero_encryption_count: LwePublicKeyZeroEncryptionCount,
+        // noise_distribution: NoiseDistribution,
+    ) -> SecretRandomGeneratorForkConfig
+    where
+        // MaskDistribution: Distribution,
+        // NoiseDistribution: Distribution,
+        // Scalar: RandomGenerable<MaskDistribution, CustomModulus = Scalar>,
+    {
+        SecretRandomGeneratorForkConfig::new(
+            input_key_lwe_dimension.0,
+            LwePublicKeyZeroEncryptionCount(zero_encryption_count.0 * decomp_level_count.0),
+        )
+    }
+
 }
 
 impl<Scalar: UnsignedInteger, C: ContainerMut<Element = Scalar>> LweKeyswitchKey<C> {

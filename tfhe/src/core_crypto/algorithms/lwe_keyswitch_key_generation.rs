@@ -151,6 +151,7 @@ pub fn generate_lwe_keyswitch_key_native_mod_compatible<
         PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
 
     // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    // let mut counter = 0;
     for (input_key_element, mut keyswitch_key_block) in input_lwe_sk
         .as_ref()
         .iter()
@@ -170,6 +171,9 @@ pub fn generate_lwe_keyswitch_key_native_mod_compatible<
                 .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
         }
 
+        // println!("Calling encrypt_lwe_ciphertext_list_with_public_key (counter = {:?})...", counter);
+        // println!("plaintext: {:?}", decomposition_plaintexts_buffer.as_ref());
+        // counter += 1;
         encrypt_lwe_ciphertext_list(
             output_lwe_sk,
             &mut keyswitch_key_block,

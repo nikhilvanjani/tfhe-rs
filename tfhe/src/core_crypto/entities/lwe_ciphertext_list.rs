@@ -4,6 +4,7 @@ use tfhe_versionable::Versionize;
 
 use crate::core_crypto::backward_compatibility::entities::lwe_ciphertext_list::LweCiphertextListVersions;
 use crate::core_crypto::commons::generators::EncryptionRandomGeneratorForkConfig;
+use crate::core_crypto::commons::generators::SecretRandomGeneratorForkConfig;
 use crate::core_crypto::commons::math::random::{Distribution, RandomGenerable};
 use crate::core_crypto::commons::parameters::*;
 use crate::core_crypto::commons::traits::*;
@@ -80,6 +81,37 @@ where
     )
 }
 
+// pub fn lwe_ciphertext_list_encryption_fork_config_with_public_key<Scalar, MaskDistribution>(
+pub fn lwe_ciphertext_list_encryption_fork_config_with_public_key(
+    lwe_ciphertext_count: LweCiphertextCount,
+    // lwe_dimension: LweDimension,
+    // mask_distribution: MaskDistribution,
+    // noise_distribution: NoiseDistribution,
+    // ciphertext_modulus: CiphertextModulus<Scalar>,
+    zero_encryption_per_child_count: LwePublicKeyZeroEncryptionCount,
+// ) -> EncryptionRandomGeneratorForkConfig
+) -> SecretRandomGeneratorForkConfig
+// where
+//     Scalar: UnsignedInteger
+    //     + RandomGenerable<MaskDistribution, CustomModulus = Scalar>,
+    // MaskDistribution: Distribution,
+    // NoiseDistribution: Distribution,
+{
+    // let lwe_mask_sample_count = lwe_ciphertext_encryption_mask_sample_count(lwe_dimension);
+    // let lwe_noise_sample_count = lwe_ciphertext_encryption_noise_sample_count();
+
+    // let modulus = ciphertext_modulus.get_custom_modulus_as_optional_scalar();
+
+    SecretRandomGeneratorForkConfig::new(
+        lwe_ciphertext_count.0,
+        // lwe_mask_sample_count,
+        // mask_distribution,
+        // lwe_noise_sample_count,
+        // noise_distribution,
+        // modulus,
+        zero_encryption_per_child_count,
+    )
+}
 impl<Scalar: UnsignedInteger, C: Container<Element = Scalar>> LweCiphertextList<C> {
     /// Create an [`LweCiphertextList`] from an existing container.
     ///
@@ -214,6 +246,29 @@ impl<Scalar: UnsignedInteger, C: Container<Element = Scalar>> LweCiphertextList<
             self.ciphertext_modulus(),
         )
     }
+
+    // pub fn encryption_fork_config_with_public_key<MaskDistribution>(
+    pub fn encryption_fork_config_with_public_key(
+        &self,
+        // mask_distribution: MaskDistribution,
+        zero_encryption_count: LwePublicKeyZeroEncryptionCount,
+        // noise_distribution: NoiseDistribution,
+    ) -> SecretRandomGeneratorForkConfig
+    where
+        // MaskDistribution: Distribution,
+        // NoiseDistribution: Distribution,
+        // Scalar: RandomGenerable<MaskDistribution, CustomModulus = Scalar>,
+    {
+        lwe_ciphertext_list_encryption_fork_config_with_public_key(
+            self.lwe_ciphertext_count(),
+            // self.lwe_size().to_lwe_dimension(),
+            // mask_distribution,
+            // noise_distribution,
+            // self.ciphertext_modulus(),
+            zero_encryption_count,
+        )
+    }
+
 }
 
 impl<Scalar: UnsignedInteger, C: ContainerMut<Element = Scalar>> LweCiphertextList<C> {

@@ -24,9 +24,9 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use tfhe_fft::c64;
 use tfhe_versionable::Versionize;
 
-use crate::core_crypto::prelude::Encryptable;
-use crate::core_crypto::commons::math::random::Uniform;
-use crate::core_crypto::prelude::UnsignedInteger;
+// use crate::core_crypto::prelude::Encryptable;
+// use crate::core_crypto::commons::math::random::Uniform;
+// use crate::core_crypto::prelude::UnsignedInteger;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Versionize)]
 #[serde(bound(deserialize = "C: IntoContainerOwned"))]
@@ -377,13 +377,13 @@ impl FourierLweBootstrapKeyView<'_> {
         lwe: LweCiphertextView<'_, InputScalar>,
         fft: FftView<'_>,
         stack: &mut PodStack,
-        // input_mask: &LweMask<InputCont>,
-        input_mask: &LweMask<&[Scalar]>,
-        input_noise: &LweBody<Scalar>,
+        // lwe_mask: &LweMask<InputCont>,
+        _lwe_mask: &LweMask<&[Scalar]>,
+        _lwe_noise: &LweBody<Scalar>,
         // lut_mask: &GlweMask<OutputCont>,
         // lut_noise: &GlweBody<OutputCont>,
-        bsk_mask_vector: Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>,
-        bsk_noise_vector: Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>,
+        _bsk_mask_vector: Vec<Vec<Vec<GlweMask<Vec<Scalar>>>>>,
+        _bsk_noise_vector: Vec<Vec<Vec<GlweBody<Vec<Scalar>>>>>,
     // ) 
     ) -> GlweBody<Vec<Scalar>>
     // ) -> GlweBody<OutputCont>
@@ -404,6 +404,16 @@ impl FourierLweBootstrapKeyView<'_> {
         assert!(ciphertext_modulus.is_compatible_with_native_modulus());
         let monomial_degree = MonomialDegree(pbs_modulus_switch(*lwe_body.data, lut_poly_size));
 
+        let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+        if !ciphertext_modulus.is_native_modulus() {
+            new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+        }
+        // let mut noise = GlweBody::from_container(
+        let noise = GlweBody::from_container(
+            vec![Scalar::ZERO; lut_poly_size.0],
+            new_ciphertext_modulus
+            );
+
         lut.as_mut_polynomial_list()
             .iter_mut()
             .for_each(|mut poly| {
@@ -411,6 +421,7 @@ impl FourierLweBootstrapKeyView<'_> {
 
                 let mut tmp_poly = Polynomial::from_container(&mut *tmp_poly);
                 tmp_poly.as_mut().copy_from_slice(poly.as_ref());
+                // this does not affect noise.
                 polynomial_wrapping_monic_monomial_div(&mut poly, &tmp_poly, monomial_degree);
             });
 
@@ -437,6 +448,7 @@ impl FourierLweBootstrapKeyView<'_> {
                     ct1.as_mut_polynomial_list().iter_mut(),
                     ct0.as_polynomial_list().iter(),
                 ) {
+                    // this does not affect noise.
                     polynomial_wrapping_monic_monomial_mul_and_subtract(
                         &mut ct1_poly,
                         &ct0_poly,
@@ -470,14 +482,6 @@ impl FourierLweBootstrapKeyView<'_> {
                 .for_each(|x| *x = signed_decomposer.closest_representable(*x));
         }
         // dummy return noise
-        let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
-        if !ciphertext_modulus.is_native_modulus() {
-            new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
-        }
-        let noise = GlweBody::from_container(
-            vec![Scalar::ZERO; lut_poly_size.0],
-            new_ciphertext_modulus
-            );
         noise        
     }
 

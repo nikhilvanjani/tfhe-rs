@@ -89,7 +89,7 @@ impl EncryptionRandomGeneratorForkConfig {
 /// A random number generator which can be used to encrypt messages.
 pub struct EncryptionRandomGenerator<G: ByteRandomGenerator> {
     // A separate mask generator, only used to generate the mask elements.
-    mask: MaskRandomGenerator<G>,
+    pub mask: MaskRandomGenerator<G>,
     // A separate noise generator, only used to generate the noise samples.
     noise: NoiseRandomGenerator<G>,
 }

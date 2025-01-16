@@ -34,3 +34,5 @@ package-lock.json
 
 # Dir used for backward compatibility test data
 tfhe/tfhe-backward-compat-data/
+
+**/*.DS_Store

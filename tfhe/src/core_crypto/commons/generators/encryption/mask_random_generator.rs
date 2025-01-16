@@ -93,7 +93,7 @@ impl MaskRandomGeneratorForkConfig {
 /// values for non power of 2 moduli) which may require rejection sampling, having the primitives
 /// properly separate in their respective types is preferable.
 pub struct MaskRandomGenerator<G: ByteRandomGenerator> {
-    gen: RandomGenerator<G>,
+    pub gen: RandomGenerator<G>,
 }
 
 impl<G: ByteRandomGenerator> MaskRandomGenerator<G> {

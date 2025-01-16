@@ -83,6 +83,66 @@ where
     )
 }
 
+pub fn encrypt_lwe_ciphertext_list_ret_mask_and_noise<Scalar, NoiseDistribution, KeyCont, OutputCont, InputCont, Gen>(
+    lwe_secret_key: &LweSecretKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+) -> (Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    KeyCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    let gen_iter = generator
+        .try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .unwrap();
+
+    let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    if !output.ciphertext_modulus().is_native_modulus() {
+        new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output.ciphertext_modulus().get_custom_modulus());
+    }
+    let mut noise_vector = vec![
+        LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+        output.lwe_ciphertext_count().0
+    ];
+    let mut mask_vector = vec![
+        LweMask::from_container(
+            vec![
+                Scalar::ZERO; 
+                output.lwe_size().to_lwe_dimension().0
+            ], 
+            new_ciphertext_modulus);
+        output.lwe_ciphertext_count().0
+    ];
+    for ((((encoded_plaintext_ref, mut ciphertext), mut loop_generator), mask_entry), noise_entry) in
+        encoded.iter().zip(output.iter_mut()).zip(gen_iter).zip(mask_vector.iter_mut()).zip(noise_vector.iter_mut())
+    {
+        noise_entry.data = encrypt_lwe_ciphertext_ret_noise(
+            lwe_secret_key,
+            &mut ciphertext,
+            encoded_plaintext_ref.into(),
+            noise_distribution,
+            &mut loop_generator,
+        ).data;
+        mask_entry.as_mut().copy_from_slice(ciphertext.get_mask().as_ref());
+    }
+
+    (mask_vector, noise_vector)
+}
+
 pub fn fill_lwe_mask_and_body_for_encryption_ret_noise<Scalar, NoiseDistribution, KeyCont, OutputCont, Gen>(
     lwe_secret_key: &LweSecretKey<KeyCont>,
     output_mask: &mut LweMask<&mut [Scalar]>, // Changed to match type from get_mut_mask_and_body
@@ -208,9 +268,10 @@ pub fn encrypt_lwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont, 
     encoded: Plaintext<Scalar>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-    mask: &LweMask<&[Scalar]>,
+    mask: &LweMask<Vec<Scalar>>,
+    // mask: &LweMask<&[Scalar]>,
     // noise: Scalar,
-    noise: LweBody<Scalar>,
+    noise: &LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -236,8 +297,75 @@ pub fn encrypt_lwe_ciphertext_deterministic<Scalar, NoiseDistribution, KeyCont, 
         noise_distribution,
         generator,
         &mask,
-        noise,
+        &noise,
     );
+}
+
+pub fn encrypt_lwe_ciphertext_list_deterministic<Scalar, NoiseDistribution, KeyCont, OutputCont, InputCont, Gen>(
+    lwe_secret_key: &LweSecretKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &Vec<LweMask<Vec<Scalar>>>,
+    noise_vector: &Vec<LweBody<Scalar>>,
+)
+// ) -> (Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    KeyCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    let gen_iter = generator
+        .try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .unwrap();
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !output.ciphertext_modulus().is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output.ciphertext_modulus().get_custom_modulus());
+    // }
+    // let mut noise_vector = vec![
+    //     LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+    //     output.lwe_ciphertext_count().0
+    // ];
+    // let mut mask_vector = vec![
+    //     LweMask::from_container(
+    //         vec![
+    //             Scalar::ZERO; 
+    //             output.lwe_size().to_lwe_dimension().0
+    //         ], 
+    //         new_ciphertext_modulus);
+    //     output.lwe_ciphertext_count().0
+    // ];
+    for ((((encoded_plaintext_ref, mut ciphertext), mut loop_generator), mask_entry), noise_entry) in
+        encoded.iter().zip(output.iter_mut()).zip(gen_iter).zip(mask_vector.iter()).zip(noise_vector.iter())
+    {
+        // noise_entry.data = encrypt_lwe_ciphertext_ret_noise(
+        encrypt_lwe_ciphertext_deterministic(
+            lwe_secret_key,
+            &mut ciphertext,
+            encoded_plaintext_ref.into(),
+            noise_distribution,
+            &mut loop_generator,
+            mask_entry,
+            noise_entry,
+        );
+        // ).data;
+        // mask_entry.as_mut().copy_from_slice(ciphertext.get_mask().as_ref());
+    }
+
+    // (mask_vector, noise_vector)
 }
 
 pub fn fill_lwe_mask_and_body_for_encryption_deterministic<Scalar, NoiseDistribution, KeyCont, OutputCont, Gen>(
@@ -247,9 +375,10 @@ pub fn fill_lwe_mask_and_body_for_encryption_deterministic<Scalar, NoiseDistribu
     encoded: Plaintext<Scalar>,
     noise_distribution: NoiseDistribution,
     generator: &mut EncryptionRandomGenerator<Gen>,
-    mask: &LweMask<&[Scalar]>,
+    mask: &LweMask<Vec<Scalar>>,
+    // mask: &LweMask<&[Scalar]>,
     // noise: Scalar,
-    noise: LweBody<Scalar>,
+    noise: &LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -278,7 +407,7 @@ pub fn fill_lwe_mask_and_body_for_encryption_deterministic<Scalar, NoiseDistribu
         noise_distribution,
         generator,
         &mask, 
-        noise,
+        &noise,
     );
 }
 
@@ -295,9 +424,10 @@ pub fn fill_lwe_mask_and_body_for_encryption_native_mod_compatible_deterministic
     encoded: Plaintext<Scalar>,
     _noise_distribution: NoiseDistribution,
     _generator: &mut EncryptionRandomGenerator<Gen>,
-    mask: &LweMask<&[Scalar]>,
+    mask: &LweMask<Vec<Scalar>>,
+    // mask: &LweMask<&[Scalar]>,
     // noise: Scalar,
-    noise: LweBody<Scalar>,
+    noise: &LweBody<Scalar>,
 ) where
     Scalar: Encryptable<Uniform, NoiseDistribution>,
     NoiseDistribution: Distribution,
@@ -2204,6 +2334,551 @@ where
             input_mask, input_noise, bsk_mask_vector, bsk_noise_vector)
 }
 
+pub fn allocate_and_generate_new_lwe_keyswitch_key_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    noise_distribution: NoiseDistribution,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+// ) -> (LweKeyswitchKeyOwned<Scalar>, Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+) -> (LweKeyswitchKeyOwned<Scalar>, Vec<Vec<LweMask<Vec<Scalar>>>>, Vec<Vec<LweBody<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    let mut new_lwe_keyswitch_key = LweKeyswitchKeyOwned::new(
+        Scalar::ZERO,
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_sk.lwe_dimension(),
+        output_lwe_sk.lwe_dimension(),
+        ciphertext_modulus,
+    );
+
+    let (ksk_mask_vector, ksk_noise_vector, plaintexts_vector) = generate_lwe_keyswitch_key_ret_mask_and_noise(
+        input_lwe_sk,
+        output_lwe_sk,
+        &mut new_lwe_keyswitch_key,
+        noise_distribution,
+        generator,
+    );
+
+    (new_lwe_keyswitch_key, ksk_mask_vector, ksk_noise_vector, plaintexts_vector)
+}
+
+pub fn generate_lwe_keyswitch_key_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+// ) -> (Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+) -> (Vec<Vec<LweMask<Vec<Scalar>>>>, Vec<Vec<LweBody<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+    generate_lwe_keyswitch_key_native_mod_compatible_ret_mask_and_noise(
+        input_lwe_sk,
+        output_lwe_sk,
+        lwe_keyswitch_key,
+        noise_distribution,
+        generator,
+    )
+}
+
+pub fn generate_lwe_keyswitch_key_native_mod_compatible_ret_mask_and_noise<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+// ) 
+) -> (Vec<Vec<LweMask<Vec<Scalar>>>>, Vec<Vec<LweBody<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension() == input_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey input LweDimension is not equal \
+    to the input LweSecretKey LweDimension. Destination: {:?}, input: {:?}",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_sk.lwe_dimension()
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension() == output_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey output LweDimension is not equal \
+    to the output LweSecretKey LweDimension. Destination: {:?}, output: {:?}",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_sk.lwe_dimension()
+    );
+
+    let decomp_base_log = lwe_keyswitch_key.decomposition_base_log();
+    let decomp_level_count = lwe_keyswitch_key.decomposition_level_count();
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+    assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+
+    // The plaintexts used to encrypt a key element will be stored in this buffer
+    let mut decomposition_plaintexts_buffer_vector =
+        vec![
+            PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+            lwe_keyswitch_key.input_key_lwe_dimension().0
+        ];
+
+    let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    if !ciphertext_modulus.is_native_modulus() {
+        new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+    }
+    let mut noise_vector = 
+        vec![
+            vec![
+                LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+                decomp_level_count.0
+            ];
+            lwe_keyswitch_key.input_key_lwe_dimension().0
+        ];
+    let mut mask_vector = 
+        vec![
+            vec![
+                LweMask::from_container(
+                    vec![
+                        Scalar::ZERO; 
+                        lwe_keyswitch_key.output_key_lwe_dimension().0
+                    ], 
+                    new_ciphertext_modulus);
+                decomp_level_count.0
+            ];
+            lwe_keyswitch_key.input_key_lwe_dimension().0
+        ];
+
+
+
+    // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    for ((((input_key_element, mut keyswitch_key_block), mask_chunk), noise_chunk), decomposition_plaintexts_buffer) in input_lwe_sk
+        .as_ref()
+        .iter()
+        .zip(lwe_keyswitch_key.iter_mut())
+        .zip(mask_vector.iter_mut())
+        .zip(noise_vector.iter_mut())
+        .zip(decomposition_plaintexts_buffer_vector.iter_mut())
+    {
+        // We fill the buffer with the powers of the key elements
+        for (level, message) in (1..=decomp_level_count.0)
+            .map(DecompositionLevel)
+            .rev()
+            .zip(decomposition_plaintexts_buffer.iter_mut())
+        {
+            // Here  we take the decomposition term from the native torus, bring it to the torus we
+            // are working with by dividing by the scaling factor and the encryption will take care
+            // of mapping that back to the native torus
+            *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+                .to_recomposition_summand()
+                .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+        }
+
+        // let (tmp_mask_chunk, tmp_noise_chunk) =encrypt_lwe_ciphertext_list_ret_mask_and_noise(
+        (*mask_chunk, *noise_chunk) =encrypt_lwe_ciphertext_list_ret_mask_and_noise(
+            output_lwe_sk,
+            &mut keyswitch_key_block,
+            &decomposition_plaintexts_buffer,
+            noise_distribution,
+            generator,
+        );
+        // mask_chunk.as_mut().copy_from_slice(tmp_mask_chunk.as_ref());
+        // noise_chunk.as_mut().copy_from_slice(tmp_noise_chunk.as_ref());
+    }
+
+    (mask_vector, noise_vector, decomposition_plaintexts_buffer_vector)
+}
+
+pub fn keyswitch_lwe_ciphertext_ret_noise<Scalar, KSKCont, InputCont, OutputCont>(
+    lwe_keyswitch_key: &LweKeyswitchKey<KSKCont>,
+    input_lwe_ciphertext: &LweCiphertext<InputCont>,
+    output_lwe_ciphertext: &mut LweCiphertext<OutputCont>,
+    ksk_noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+    plaintextlist_vector: &Vec<PlaintextListOwned<Scalar>>,
+// ) -> LweBody<Scalar>
+) -> (LweBody<Scalar>, Plaintext<Scalar>)
+where
+    Scalar: UnsignedInteger,
+    KSKCont: Container<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+    keyswitch_lwe_ciphertext_native_mod_compatible_ret_noise(
+        lwe_keyswitch_key,
+        input_lwe_ciphertext,
+        output_lwe_ciphertext,
+        ksk_noise_vector,
+        plaintextlist_vector,
+    )
+}
+
+pub fn keyswitch_lwe_ciphertext_native_mod_compatible_ret_noise<Scalar, KSKCont, InputCont, OutputCont>(
+    lwe_keyswitch_key: &LweKeyswitchKey<KSKCont>,
+    input_lwe_ciphertext: &LweCiphertext<InputCont>,
+    output_lwe_ciphertext: &mut LweCiphertext<OutputCont>,
+    ksk_noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+    plaintextlist_vector: &Vec<PlaintextListOwned<Scalar>>,
+// ) -> LweBody<Scalar>
+) -> (LweBody<Scalar>, Plaintext<Scalar>)
+where
+    Scalar: UnsignedInteger,
+    KSKCont: Container<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension()
+            == input_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+        "Mismatched input LweDimension. \
+        LweKeyswitchKey input LweDimension: {:?}, input LweCiphertext LweDimension {:?}.",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension()
+            == output_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+        "Mismatched output LweDimension. \
+        LweKeyswitchKey output LweDimension: {:?}, output LweCiphertext LweDimension {:?}.",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+    );
+
+    let output_ciphertext_modulus = output_lwe_ciphertext.ciphertext_modulus();
+
+    assert_eq!(
+        lwe_keyswitch_key.ciphertext_modulus(),
+        output_ciphertext_modulus,
+        "Mismatched CiphertextModulus. \
+        LweKeyswitchKey CiphertextModulus: {:?}, output LweCiphertext CiphertextModulus {:?}.",
+        lwe_keyswitch_key.ciphertext_modulus(),
+        output_ciphertext_modulus
+    );
+    assert!(
+        output_ciphertext_modulus.is_compatible_with_native_modulus(),
+        "This operation currently only supports power of 2 moduli"
+    );
+
+    let input_ciphertext_modulus = input_lwe_ciphertext.ciphertext_modulus();
+
+    assert!(
+        input_ciphertext_modulus.is_compatible_with_native_modulus(),
+        "This operation currently only supports power of 2 moduli"
+    );
+
+    // Clear the output ciphertext, as it will get updated gradually
+    output_lwe_ciphertext.as_mut().fill(Scalar::ZERO);
+
+    let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    if !output_ciphertext_modulus.is_native_modulus() {
+        new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output_ciphertext_modulus.get_custom_modulus());
+    }
+    let mut output_lwe_ciphertext_noise = LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+    let mut noisy_message = Scalar::ZERO;
+
+    // Copy the input body to the output ciphertext
+    *output_lwe_ciphertext.get_mut_body().data = *input_lwe_ciphertext.get_body().data;
+
+    // If the moduli are not the same, we need to round the body in the output ciphertext
+    if output_ciphertext_modulus != input_ciphertext_modulus
+        && !output_ciphertext_modulus.is_native_modulus()
+    {
+        let modulus_bits = output_ciphertext_modulus.get_custom_modulus().ilog2() as usize;
+        let output_decomposer = SignedDecomposer::new(
+            DecompositionBaseLog(modulus_bits),
+            DecompositionLevelCount(1),
+        );
+
+        *output_lwe_ciphertext.get_mut_body().data =
+            output_decomposer.closest_representable(*output_lwe_ciphertext.get_mut_body().data);
+    }
+    // start computing noisy message
+    noisy_message = *output_lwe_ciphertext.get_body().data;
+
+    // We instantiate a decomposer
+    let decomposer = SignedDecomposer::new(
+        lwe_keyswitch_key.decomposition_base_log(),
+        lwe_keyswitch_key.decomposition_level_count(),
+    );
+
+    for (((keyswitch_key_block, &input_mask_element), ksk_noise_chunk), plaintextlist) in lwe_keyswitch_key
+        .iter()
+        .zip(input_lwe_ciphertext.get_mask().as_ref())
+        .zip(ksk_noise_vector.iter())
+        .zip(plaintextlist_vector.iter())
+    {
+        let decomposition_iter = decomposer.decompose(input_mask_element);
+        // Loop over the levels
+        for (((level_key_ciphertext, decomposed), ksk_noise_entry), plaintext) in keyswitch_key_block.iter().zip(decomposition_iter).zip(ksk_noise_chunk.iter()).zip(plaintextlist.as_ref())
+        {
+            slice_wrapping_sub_scalar_mul_assign(
+                output_lwe_ciphertext.as_mut(),
+                level_key_ciphertext.as_ref(),
+                decomposed.value(),
+            );
+            // compute noise
+            let tmp_val = ksk_noise_entry.data;
+            output_lwe_ciphertext_noise.data = output_lwe_ciphertext_noise.data.wrapping_sub(
+                tmp_val.wrapping_mul(decomposed.value())
+            );
+            // compute noisy message
+            let tmp_noisy_message = plaintext;
+            noisy_message = noisy_message.wrapping_sub(
+                tmp_noisy_message.wrapping_mul(decomposed.value())
+            );
+        }
+    }
+    (output_lwe_ciphertext_noise, Plaintext(noisy_message))
+}
+
+pub fn allocate_and_generate_new_lwe_keyswitch_key_deterministic<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    noise_distribution: NoiseDistribution,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &Vec<Vec<LweMask<Vec<Scalar>>>>,
+    noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+// ) -> (LweKeyswitchKeyOwned<Scalar>, Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+) -> LweKeyswitchKeyOwned<Scalar>
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    let mut new_lwe_keyswitch_key = LweKeyswitchKeyOwned::new(
+        Scalar::ZERO,
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_sk.lwe_dimension(),
+        output_lwe_sk.lwe_dimension(),
+        ciphertext_modulus,
+    );
+
+    generate_lwe_keyswitch_key_deterministic(
+        input_lwe_sk,
+        output_lwe_sk,
+        &mut new_lwe_keyswitch_key,
+        noise_distribution,
+        generator,
+        mask_vector,
+        noise_vector,
+    );
+
+    new_lwe_keyswitch_key
+}
+
+pub fn generate_lwe_keyswitch_key_deterministic<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &Vec<Vec<LweMask<Vec<Scalar>>>>,
+    noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+// ) -> (Vec<LweMask<Vec<Scalar>>>, Vec<LweBody<Scalar>>)
+) where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+    generate_lwe_keyswitch_key_native_mod_compatible_deterministic(
+        input_lwe_sk,
+        output_lwe_sk,
+        lwe_keyswitch_key,
+        noise_distribution,
+        generator,
+        mask_vector,
+        noise_vector,
+    )
+}
+
+pub fn generate_lwe_keyswitch_key_native_mod_compatible_deterministic<
+    Scalar,
+    NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    noise_distribution: NoiseDistribution,
+    generator: &mut EncryptionRandomGenerator<Gen>,
+    mask_vector: &Vec<Vec<LweMask<Vec<Scalar>>>>,
+    noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+) 
+// ) -> (Vec<Vec<LweMask<Vec<Scalar>>>>, Vec<Vec<LweBody<Scalar>>>)
+where
+    Scalar: Encryptable<Uniform, NoiseDistribution>,
+    NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar>,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension() == input_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey input LweDimension is not equal \
+    to the input LweSecretKey LweDimension. Destination: {:?}, input: {:?}",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_sk.lwe_dimension()
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension() == output_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey output LweDimension is not equal \
+    to the output LweSecretKey LweDimension. Destination: {:?}, output: {:?}",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_sk.lwe_dimension()
+    );
+
+    let decomp_base_log = lwe_keyswitch_key.decomposition_base_log();
+    let decomp_level_count = lwe_keyswitch_key.decomposition_level_count();
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+    assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+
+    // The plaintexts used to encrypt a key element will be stored in this buffer
+    let mut decomposition_plaintexts_buffer =
+        PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !ciphertext_modulus.is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+    // }
+    // let mut noise_vector = 
+    //     vec![
+    //         vec![
+    //             LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+    //             decomp_level_count.0
+    //         ];
+    //         lwe_keyswitch_key.input_key_lwe_dimension().0
+    //     ];
+    // let mut mask_vector = 
+    //     vec![
+    //         vec![
+    //             LweMask::from_container(
+    //                 vec![
+    //                     Scalar::ZERO; 
+    //                     lwe_keyswitch_key.output_key_lwe_dimension().0
+    //                 ], 
+    //                 new_ciphertext_modulus);
+    //             decomp_level_count.0
+    //         ];
+    //         lwe_keyswitch_key.input_key_lwe_dimension().0
+    //     ];
+
+
+
+    // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    for (((input_key_element, mut keyswitch_key_block), mask_chunk), noise_chunk) in input_lwe_sk
+        .as_ref()
+        .iter()
+        .zip(lwe_keyswitch_key.iter_mut())
+        .zip(mask_vector.iter())
+        .zip(noise_vector.iter())
+    {
+        // We fill the buffer with the powers of the key elements
+        for (level, message) in (1..=decomp_level_count.0)
+            .map(DecompositionLevel)
+            .rev()
+            .zip(decomposition_plaintexts_buffer.iter_mut())
+        {
+            // Here  we take the decomposition term from the native torus, bring it to the torus we
+            // are working with by dividing by the scaling factor and the encryption will take care
+            // of mapping that back to the native torus
+            *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+                .to_recomposition_summand()
+                .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+        }
+
+        // let (tmp_mask_chunk, tmp_noise_chunk) =encrypt_lwe_ciphertext_list_ret_mask_and_noise(
+        encrypt_lwe_ciphertext_list_deterministic(
+            output_lwe_sk,
+            &mut keyswitch_key_block,
+            &decomposition_plaintexts_buffer,
+            noise_distribution,
+            generator,
+            &mask_chunk,
+            &noise_chunk,
+        );
+        // mask_chunk.as_mut().copy_from_slice(tmp_mask_chunk.as_ref());
+        // noise_chunk.as_mut().copy_from_slice(tmp_noise_chunk.as_ref());
+    }
+
+    // (mask_vector, noise_vector)
+}
+
 
 /////////////////////
 // public key setting below
@@ -2224,6 +2899,14 @@ impl<Scalar: Clone> Clone for PublicKeyRandomVectors<Scalar> {
             binary_random_vector: self.binary_random_vector.clone(),
         }
     }
+}
+
+impl <Scalar: UnsignedInteger> PublicKeyRandomVectors<Scalar> {
+    fn new(init_val: Scalar, length: u64) -> Self {
+        PublicKeyRandomVectors {
+            binary_random_vector : vec![init_val; length.try_into().unwrap()]
+        }
+    } 
 }
 
 pub fn encrypt_lwe_ciphertext_with_public_key_ret_mask<Scalar, KeyCont, OutputCont, Gen>(
@@ -2282,7 +2965,7 @@ where
     }
 }
 
-pub fn encrypt_lwe_ciphertext_with_public_key_and_mask<Scalar, KeyCont, OutputCont>(
+pub fn encrypt_lwe_ciphertext_with_public_key_deterministic<Scalar, KeyCont, OutputCont>(
     lwe_public_key: &LwePublicKey<KeyCont>,
     output: &mut LweCiphertext<OutputCont>,
     encoded: Plaintext<Scalar>,
@@ -2340,3 +3023,1030 @@ where
     lwe_ciphertext_plaintext_add_assign(output, encoded);
 }
 
+pub fn allocate_and_generate_new_lwe_keyswitch_key_with_public_key<
+    Scalar,
+    // NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    // output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    // noise_distribution: NoiseDistribution,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    // pk_generator: &mut EncryptionRandomGenerator<Gen>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+) -> LweKeyswitchKeyOwned<Scalar>
+where
+    Scalar: UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution>,
+    // NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let mut new_lwe_keyswitch_key = LweKeyswitchKeyOwned::new(
+        Scalar::ZERO,
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_sk.lwe_dimension(),
+        // output_lwe_sk.lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension(),
+        ciphertext_modulus,
+    );
+
+    // generate_lwe_keyswitch_key(
+    //     input_lwe_sk,
+    //     output_lwe_sk,
+    //     &mut new_lwe_keyswitch_key,
+    //     noise_distribution,
+    //     pk_generator,
+    // );
+
+    generate_lwe_keyswitch_key_with_public_key(
+        input_lwe_sk,
+        // output_lwe_sk,
+        output_lwe_pk,
+        &mut new_lwe_keyswitch_key,
+        // noise_distribution,
+        // pk_generator,
+        sk_generator,
+    );
+
+    new_lwe_keyswitch_key
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key<
+    Scalar,
+    // NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    // output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    // noise_distribution: NoiseDistribution,
+    // pk_generator: &mut EncryptionRandomGenerator<Gen>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+) where
+    Scalar: UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution>,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + UnsignedTorus,
+    // NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+
+    generate_lwe_keyswitch_key_with_public_key_native_mod_compatible(
+        input_lwe_sk,
+        // output_lwe_sk,
+        output_lwe_pk,
+        lwe_keyswitch_key,
+        // noise_distribution,
+        // pk_generator,
+        sk_generator,
+    )
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key_native_mod_compatible<
+    Scalar,
+    // NoiseDistribution,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    // output_lwe_sk: &LweSecretKey<OutputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    // noise_distribution: NoiseDistribution,
+    // pk_generator: &mut EncryptionRandomGenerator<Gen>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+) where
+    Scalar: UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution>,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + UnsignedTorus,
+    // NoiseDistribution: Distribution,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension() == input_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey input LweDimension is not equal \
+    to the input LweSecretKey LweDimension. Destination: {:?}, input: {:?}",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_sk.lwe_dimension()
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension() == output_lwe_pk.lwe_size().to_lwe_dimension(),
+        "The destination LweKeyswitchKey output LweDimension is not equal \
+    to the output LwePublicKey LweDimension. Destination: {:?}, output: {:?}",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension()
+    );
+
+    let decomp_base_log = lwe_keyswitch_key.decomposition_base_log();
+    let decomp_level_count = lwe_keyswitch_key.decomposition_level_count();
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+    assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+
+    let gen_iter = sk_generator
+        // .try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        // .try_fork_from_config(output.encryption_fork_config(Uniform, Uniform))
+        .par_try_fork_from_config(lwe_keyswitch_key.encryption_fork_config_with_public_key(lwe_keyswitch_key.input_key_lwe_dimension(), decomp_level_count, output_lwe_pk.zero_encryption_count()))
+        .unwrap();
+
+    // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    input_lwe_sk
+        .as_ref().par_iter()
+        .zip(lwe_keyswitch_key.par_iter_mut())
+        .zip(gen_iter)
+        .for_each(|((input_key_element, mut keyswitch_key_block), mut generator)| {
+
+            // The plaintexts used to encrypt a key element will be stored in this buffer
+            let mut decomposition_plaintexts_buffer =
+                PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+
+            // We fill the buffer with the powers of the key elements
+            for (level, message) in (1..=decomp_level_count.0)
+                .map(DecompositionLevel)
+                .rev()
+                .zip(decomposition_plaintexts_buffer.iter_mut())
+            {
+                // Here  we take the decomposition term from the native torus, bring it to the torus we
+                // are working with by dividing by the scaling factor and the encryption will take care
+                // of mapping that back to the native torus
+                *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+                    .to_recomposition_summand()
+                    .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+            }
+
+            // println!("Calling encrypt_lwe_ciphertext_list_with_public_key...");
+            // println!("Calling encrypt_lwe_ciphertext_list_with_public_key (counter = {:?})...", counter);
+            // counter += 1;
+            // encrypt_lwe_ciphertext_list_with_public_key(
+            par_encrypt_lwe_ciphertext_list_with_public_key(
+                output_lwe_pk,
+                &mut keyswitch_key_block,
+                &decomposition_plaintexts_buffer,
+                // noise_distribution,
+                &mut generator,
+            );
+        });
+
+    // // The plaintexts used to encrypt a key element will be stored in this buffer
+    // let mut decomposition_plaintexts_buffer =
+    //     PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+
+    // // let mut counter = 0;
+    // for (input_key_element, mut keyswitch_key_block) in input_lwe_sk
+    //     .as_ref()
+    //     .iter()
+    //     .zip(lwe_keyswitch_key.iter_mut())
+    // {
+    //     // We fill the buffer with the powers of the key elements
+    //     for (level, message) in (1..=decomp_level_count.0)
+    //         .map(DecompositionLevel)
+    //         .rev()
+    //         .zip(decomposition_plaintexts_buffer.iter_mut())
+    //     {
+    //         // Here  we take the decomposition term from the native torus, bring it to the torus we
+    //         // are working with by dividing by the scaling factor and the encryption will take care
+    //         // of mapping that back to the native torus
+    //         *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+    //             .to_recomposition_summand()
+    //             .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+    //     }
+
+    //     // println!("Calling encrypt_lwe_ciphertext_list_with_public_key...");
+    //     // println!("Calling encrypt_lwe_ciphertext_list_with_public_key (counter = {:?})...", counter);
+    //     // println!("plaintext: {:?}", decomposition_plaintexts_buffer.as_ref());
+    //     // counter += 1;
+
+    //     // encrypt_lwe_ciphertext_list(
+    //     //     output_lwe_sk,
+    //     //     &mut keyswitch_key_block,
+    //     //     &decomposition_plaintexts_buffer,
+    //     //     noise_distribution,
+    //     //     pk_generator,
+    //     // );
+
+    //     // encrypt_lwe_ciphertext_list_with_public_key(
+    //     //     output_lwe_sk,
+    //     //     output_lwe_pk,
+    //     //     &mut keyswitch_key_block,
+    //     //     &decomposition_plaintexts_buffer,
+    //     //     noise_distribution,
+    //     //     pk_generator,
+    //     //     sk_generator,
+    //     // );
+
+    //     par_encrypt_lwe_ciphertext_list_with_public_key(
+    //         output_lwe_pk,
+    //         &mut keyswitch_key_block,
+    //         &decomposition_plaintexts_buffer,
+    //         sk_generator,
+    //     );
+
+    // }
+}
+
+pub fn encrypt_lwe_ciphertext_list_with_public_key<Scalar, KeyCont, OutputCont, InputCont, Gen>(
+    // lwe_secret_key: &LweSecretKey<KeyCont>,
+    lwe_public_key: &LwePublicKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    // noise_distribution: NoiseDistribution,
+    // pk_generator: &mut EncryptionRandomGenerator<Gen>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+) where
+    Scalar: UnsignedTorus,
+    // Scalar: Encryptable<Uniform, NoiseDistribution>,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + UnsignedTorus,
+    KeyCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    Gen: ByteRandomGenerator,
+    // NoiseDistribution: Distribution,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    // let gen_iter = generator
+    //     // .try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+    //     // .try_fork_from_config(output.encryption_fork_config(Uniform, Uniform))
+    //     .try_fork_from_config(output.encryption_fork_config_with_public_key(lwe_public_key.zero_encryption_count()))
+    //     .unwrap();
+
+    // let mut counter = 0;
+    // for ((encoded_plaintext_ref, mut ciphertext), mut loop_generator) in
+    for (encoded_plaintext_ref, mut ciphertext) in
+        encoded
+        .iter()
+        .zip(output.iter_mut())
+        // .zip(gen_iter)
+    {
+        // println!("Calling encrypt_lwe_ciphertext_with_public_key (counter = {:?})...", counter);
+        // counter += 1;
+
+        // encrypt_lwe_ciphertext(
+        //     lwe_secret_key,
+        //     &mut ciphertext,
+        //     encoded_plaintext_ref.into(),
+        //     noise_distribution,
+        //     pk_generator,
+        //     // &mut loop_generator,
+        // );
+
+        encrypt_lwe_ciphertext_with_public_key(
+            lwe_public_key,
+            &mut ciphertext,
+            encoded_plaintext_ref.into(),
+            // noise_distribution,
+            sk_generator,
+            // &mut loop_generator,
+            // &mut loop_generator.mask.gen,
+            // &mut SecretRandomGenerator::new(loop_generator.mask.gen.seed()),
+        );
+    }
+}
+
+pub fn par_encrypt_lwe_ciphertext_list_with_public_key<
+    Scalar,
+    // NoiseDistribution,
+    KeyCont,
+    OutputCont,
+    InputCont,
+    Gen,
+>(
+    lwe_public_key: &LwePublicKey<KeyCont>,
+    // lwe_secret_key: &LweSecretKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    // noise_distribution: NoiseDistribution,
+    // generator: &mut EncryptionRandomGenerator<Gen>,
+    generator: &mut SecretRandomGenerator<Gen>,
+) where
+    Scalar: UnsignedTorus + Sync,
+    // Scalar: Encryptable<Uniform, NoiseDistribution> + Sync + Send,
+    // NoiseDistribution: Distribution + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    Gen: ParallelByteRandomGenerator,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    let gen_iter = generator
+        .par_try_fork_from_config(output.encryption_fork_config_with_public_key(lwe_public_key.zero_encryption_count()))
+        // .par_try_fork_from_config(output.encryption_fork_config(Uniform, noise_distribution))
+        .unwrap();
+
+    encoded
+        .par_iter()
+        .zip(output.par_iter_mut())
+        .zip(gen_iter)
+        .for_each(|((encoded_plaintext_ref, mut ciphertext), mut generator)| {
+            encrypt_lwe_ciphertext_with_public_key(
+                // lwe_secret_key,
+                lwe_public_key,
+                &mut ciphertext,
+                encoded_plaintext_ref.into(),
+                // noise_distribution,
+                &mut generator,
+            );
+        });
+}
+
+
+pub fn allocate_and_generate_new_lwe_keyswitch_key_with_public_key_ret_mask<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+// ) -> LweKeyswitchKeyOwned<Scalar>
+) -> (LweKeyswitchKeyOwned<Scalar>, Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let mut new_lwe_keyswitch_key = LweKeyswitchKeyOwned::new(
+        Scalar::ZERO,
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_sk.lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension(),
+        ciphertext_modulus,
+    );
+
+    let (ksk_mask_vector, plaintexts_vector) = generate_lwe_keyswitch_key_with_public_key_ret_mask(
+        input_lwe_sk,
+        output_lwe_pk,
+        &mut new_lwe_keyswitch_key,
+        sk_generator,
+    );
+
+    (new_lwe_keyswitch_key, ksk_mask_vector, plaintexts_vector)
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key_ret_mask<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+// ) 
+) -> (Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+
+    generate_lwe_keyswitch_key_with_public_key_native_mod_compatible_ret_mask(
+        input_lwe_sk,
+        output_lwe_pk,
+        lwe_keyswitch_key,
+        sk_generator,
+    )
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key_native_mod_compatible_ret_mask<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    sk_generator: &mut SecretRandomGenerator<Gen>,
+// ) 
+) -> (Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension() == input_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey input LweDimension is not equal \
+    to the input LweSecretKey LweDimension. Destination: {:?}, input: {:?}",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_sk.lwe_dimension()
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension() == output_lwe_pk.lwe_size().to_lwe_dimension(),
+        "The destination LweKeyswitchKey output LweDimension is not equal \
+    to the output LwePublicKey LweDimension. Destination: {:?}, output: {:?}",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension()
+    );
+
+    let decomp_base_log = lwe_keyswitch_key.decomposition_base_log();
+    let decomp_level_count = lwe_keyswitch_key.decomposition_level_count();
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+    assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+
+    let gen_iter = sk_generator
+        .par_try_fork_from_config(lwe_keyswitch_key.encryption_fork_config_with_public_key(lwe_keyswitch_key.input_key_lwe_dimension(), decomp_level_count, output_lwe_pk.zero_encryption_count()))
+        .unwrap();
+
+    // The plaintexts used to encrypt a key element will be stored in this buffer
+    let mut decomposition_plaintexts_buffer_vector =
+        vec![
+            PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+            lwe_keyswitch_key.input_key_lwe_dimension().0
+        ];
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !ciphertext_modulus.is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+    // }
+    let mut mask_vector = 
+        vec![
+            vec![
+                PublicKeyRandomVectors::new(Scalar::ZERO, output_lwe_pk.zero_encryption_count().0.try_into().unwrap());
+                // LweMask::from_container(
+                //     vec![
+                //         Scalar::ZERO; 
+                //         lwe_keyswitch_key.output_key_lwe_dimension().0
+                //     ], 
+                //     new_ciphertext_modulus);
+                decomp_level_count.0
+            ];
+            lwe_keyswitch_key.input_key_lwe_dimension().0
+        ];
+
+    // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    input_lwe_sk
+        .as_ref().par_iter()
+        .zip(lwe_keyswitch_key.par_iter_mut())
+        .zip(gen_iter)
+        .zip(mask_vector.par_iter_mut())
+        .zip(decomposition_plaintexts_buffer_vector.par_iter_mut())
+        .for_each(|((((input_key_element, mut keyswitch_key_block), mut generator), mask_chunk), decomposition_plaintexts_buffer)| {
+
+            // We fill the buffer with the powers of the key elements
+            for (level, message) in (1..=decomp_level_count.0)
+                .map(DecompositionLevel)
+                .rev()
+                .zip(decomposition_plaintexts_buffer.iter_mut())
+            {
+                // Here  we take the decomposition term from the native torus, bring it to the torus we
+                // are working with by dividing by the scaling factor and the encryption will take care
+                // of mapping that back to the native torus
+                *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+                    .to_recomposition_summand()
+                    .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+            }
+
+            *mask_chunk = par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask(
+                output_lwe_pk,
+                &mut keyswitch_key_block,
+                &decomposition_plaintexts_buffer,
+                &mut generator,
+            );
+        });
+
+    (mask_vector, decomposition_plaintexts_buffer_vector)
+}
+
+pub fn par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask<
+    Scalar,
+    KeyCont,
+    OutputCont,
+    InputCont,
+    Gen,
+>(
+    lwe_public_key: &LwePublicKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    generator: &mut SecretRandomGenerator<Gen>,
+// ) 
+// ) -> Vec<LweMask<Vec<Scalar>>>
+) -> Vec<PublicKeyRandomVectors<Scalar>>
+where
+    Scalar: UnsignedTorus + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    Gen: ParallelByteRandomGenerator,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    let gen_iter = generator
+        .par_try_fork_from_config(output.encryption_fork_config_with_public_key(lwe_public_key.zero_encryption_count()))
+        .unwrap();
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !output.ciphertext_modulus().is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output.ciphertext_modulus().get_custom_modulus());
+    // }
+    // let mut mask_vector = vec![
+    //     LweMask::from_container(
+    //         vec![
+    //             Scalar::ZERO; 
+    //             output.lwe_size().to_lwe_dimension().0
+    //         ], 
+    //         new_ciphertext_modulus);
+    //     output.lwe_ciphertext_count().0
+    // ];
+    let mut mask_vector = vec![
+        PublicKeyRandomVectors::new(Scalar::ZERO, lwe_public_key.zero_encryption_count().0.try_into().unwrap());
+        output.lwe_ciphertext_count().0
+    ];
+
+    encoded
+        .par_iter()
+        .zip(output.par_iter_mut())
+        .zip(gen_iter)
+        .zip(mask_vector.par_iter_mut())
+        .for_each(|(((encoded_plaintext_ref, mut ciphertext), mut generator), mask_entry)| {
+            let tmp_mask_entry = encrypt_lwe_ciphertext_with_public_key_ret_mask(
+                lwe_public_key,
+                &mut ciphertext,
+                encoded_plaintext_ref.into(),
+                &mut generator,
+            );
+            mask_entry.binary_random_vector = tmp_mask_entry.binary_random_vector;
+        });
+
+    mask_vector
+}
+
+pub fn allocate_and_generate_new_lwe_keyswitch_key_with_public_key_deterministic<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    // Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    decomp_base_log: DecompositionBaseLog,
+    decomp_level_count: DecompositionLevelCount,
+    ciphertext_modulus: CiphertextModulus<Scalar>,
+    // sk_generator: &mut SecretRandomGenerator<Gen>,
+    ksk_mask_vector: &Vec<Vec<PublicKeyRandomVectors<Scalar>>>,
+) -> LweKeyswitchKeyOwned<Scalar>
+// ) -> (LweKeyswitchKeyOwned<Scalar>, Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    // Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let mut new_lwe_keyswitch_key = LweKeyswitchKeyOwned::new(
+        Scalar::ZERO,
+        decomp_base_log,
+        decomp_level_count,
+        input_lwe_sk.lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension(),
+        ciphertext_modulus,
+    );
+
+    generate_lwe_keyswitch_key_with_public_key_deterministic(
+        input_lwe_sk,
+        output_lwe_pk,
+        &mut new_lwe_keyswitch_key,
+        // sk_generator,
+        ksk_mask_vector,
+    );
+
+    new_lwe_keyswitch_key
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key_deterministic<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    // Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    // sk_generator: &mut SecretRandomGenerator<Gen>,
+    ksk_mask_vector: &Vec<Vec<PublicKeyRandomVectors<Scalar>>>,
+) 
+// ) -> (Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    // Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+
+    generate_lwe_keyswitch_key_with_public_key_native_mod_compatible_deterministic(
+        input_lwe_sk,
+        output_lwe_pk,
+        lwe_keyswitch_key,
+        // sk_generator,
+        ksk_mask_vector,
+    )
+}
+
+pub fn generate_lwe_keyswitch_key_with_public_key_native_mod_compatible_deterministic<
+    Scalar,
+    InputKeyCont,
+    OutputKeyCont,
+    KSKeyCont,
+    // Gen,
+>(
+    input_lwe_sk: &LweSecretKey<InputKeyCont>,
+    output_lwe_pk: &LwePublicKey<OutputKeyCont>,
+    lwe_keyswitch_key: &mut LweKeyswitchKey<KSKeyCont>,
+    // sk_generator: &mut SecretRandomGenerator<Gen>,
+    mask_vector: &Vec<Vec<PublicKeyRandomVectors<Scalar>>>,
+) 
+// ) -> (Vec<Vec<PublicKeyRandomVectors<Scalar>>>, Vec<PlaintextListOwned<Scalar>>)
+where
+    Scalar: UnsignedTorus,
+    InputKeyCont: Container<Element = Scalar>,
+    OutputKeyCont: Container<Element = Scalar> + Sync,
+    KSKeyCont: ContainerMut<Element = Scalar>,
+    // Gen: ByteRandomGenerator + ParallelByteRandomGenerator,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension() == input_lwe_sk.lwe_dimension(),
+        "The destination LweKeyswitchKey input LweDimension is not equal \
+    to the input LweSecretKey LweDimension. Destination: {:?}, input: {:?}",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_sk.lwe_dimension()
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension() == output_lwe_pk.lwe_size().to_lwe_dimension(),
+        "The destination LweKeyswitchKey output LweDimension is not equal \
+    to the output LwePublicKey LweDimension. Destination: {:?}, output: {:?}",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_pk.lwe_size().to_lwe_dimension()
+    );
+
+    let decomp_base_log = lwe_keyswitch_key.decomposition_base_log();
+    let decomp_level_count = lwe_keyswitch_key.decomposition_level_count();
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+    assert!(ciphertext_modulus.is_compatible_with_native_modulus());
+
+    // let gen_iter = sk_generator
+    //     .par_try_fork_from_config(lwe_keyswitch_key.encryption_fork_config_with_public_key(lwe_keyswitch_key.input_key_lwe_dimension(), decomp_level_count, output_lwe_pk.zero_encryption_count()))
+    //     .unwrap();
+
+    // // The plaintexts used to encrypt a key element will be stored in this buffer
+    // let mut decomposition_plaintexts_buffer_vector =
+    //     vec![
+    //         PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+    //         lwe_keyswitch_key.input_key_lwe_dimension().0
+    //     ];
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !ciphertext_modulus.is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(ciphertext_modulus.get_custom_modulus());
+    // }
+    // let mut mask_vector = 
+    //     vec![
+    //         vec![
+    //             PublicKeyRandomVectors::new(Scalar::ZERO, output_lwe_pk.zero_encryption_count().0.try_into().unwrap());
+    //             // LweMask::from_container(
+    //             //     vec![
+    //             //         Scalar::ZERO; 
+    //             //         lwe_keyswitch_key.output_key_lwe_dimension().0
+    //             //     ], 
+    //             //     new_ciphertext_modulus);
+    //             decomp_level_count.0
+    //         ];
+    //         lwe_keyswitch_key.input_key_lwe_dimension().0
+    //     ];
+
+    // Iterate over the input key elements and the destination lwe_keyswitch_key memory
+    input_lwe_sk
+        .as_ref().par_iter()
+        .zip(lwe_keyswitch_key.par_iter_mut())
+        // .zip(gen_iter)
+        .zip(mask_vector.par_iter())
+        // .for_each(|(((input_key_element, mut keyswitch_key_block), mut generator), mask_chunk)| {
+        .for_each(|((input_key_element, mut keyswitch_key_block), mask_chunk)| {
+
+            // The plaintexts used to encrypt a key element will be stored in this buffer
+            let mut decomposition_plaintexts_buffer =
+                PlaintextListOwned::new(Scalar::ZERO, PlaintextCount(decomp_level_count.0));
+
+            // We fill the buffer with the powers of the key elements
+            for (level, message) in (1..=decomp_level_count.0)
+                .map(DecompositionLevel)
+                .rev()
+                .zip(decomposition_plaintexts_buffer.iter_mut())
+            {
+                // Here  we take the decomposition term from the native torus, bring it to the torus we
+                // are working with by dividing by the scaling factor and the encryption will take care
+                // of mapping that back to the native torus
+                *message.0 = DecompositionTerm::new(level, decomp_base_log, *input_key_element)
+                    .to_recomposition_summand()
+                    .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
+            }
+
+            par_encrypt_lwe_ciphertext_list_with_public_key_deterministic(
+                output_lwe_pk,
+                &mut keyswitch_key_block,
+                &decomposition_plaintexts_buffer,
+                // &mut generator,
+                &mask_chunk,
+            );
+        });
+
+    // (mask_vector, decomposition_plaintexts_buffer_vector)
+}
+
+pub fn par_encrypt_lwe_ciphertext_list_with_public_key_deterministic<
+    Scalar,
+    KeyCont,
+    OutputCont,
+    InputCont,
+    // Gen,
+>(
+    lwe_public_key: &LwePublicKey<KeyCont>,
+    output: &mut LweCiphertextList<OutputCont>,
+    encoded: &PlaintextList<InputCont>,
+    // generator: &mut SecretRandomGenerator<Gen>,
+    mask_vector: &Vec<PublicKeyRandomVectors<Scalar>>,
+) 
+// ) -> Vec<LweMask<Vec<Scalar>>>
+// ) -> Vec<PublicKeyRandomVectors<Scalar>>
+where
+    Scalar: UnsignedTorus + Sync,
+    KeyCont: Container<Element = Scalar> + Sync,
+    OutputCont: ContainerMut<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    // Gen: ParallelByteRandomGenerator,
+{
+    assert!(
+        output.lwe_ciphertext_count().0 == encoded.plaintext_count().0,
+        "Mismatch between number of output ciphertexts and input plaintexts. \
+        Got {:?} plaintexts, and {:?} ciphertext.",
+        encoded.plaintext_count(),
+        output.lwe_ciphertext_count()
+    );
+
+    // let gen_iter = generator
+    //     .par_try_fork_from_config(output.encryption_fork_config_with_public_key(lwe_public_key.zero_encryption_count()))
+    //     .unwrap();
+
+    // let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    // if !output.ciphertext_modulus().is_native_modulus() {
+    //     new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output.ciphertext_modulus().get_custom_modulus());
+    // }
+    // let mut mask_vector = vec![
+    //     LweMask::from_container(
+    //         vec![
+    //             Scalar::ZERO; 
+    //             output.lwe_size().to_lwe_dimension().0
+    //         ], 
+    //         new_ciphertext_modulus);
+    //     output.lwe_ciphertext_count().0
+    // ];
+    // let mut mask_vector = vec![
+    //     PublicKeyRandomVectors::new(Scalar::ZERO, lwe_public_key.zero_encryption_count().0.try_into().unwrap());
+    //     output.lwe_ciphertext_count().0
+    // ];
+
+    encoded
+        .par_iter()
+        .zip(output.par_iter_mut())
+        // .zip(gen_iter)
+        .zip(mask_vector.par_iter())
+        // .for_each(|(((encoded_plaintext_ref, mut ciphertext), mut generator), mask_entry)| {
+        .for_each(|((encoded_plaintext_ref, mut ciphertext), mask_entry)| {
+            encrypt_lwe_ciphertext_with_public_key_deterministic(
+                lwe_public_key,
+                &mut ciphertext,
+                encoded_plaintext_ref.into(),
+                // &mut generator,
+                mask_entry.binary_random_vector.clone(),
+            );
+        });
+}
+
+pub fn keyswitch_lwe_ciphertext_ret_mask<Scalar, KSKCont, InputCont, OutputCont>(
+    lwe_keyswitch_key: &LweKeyswitchKey<KSKCont>,
+    input_lwe_ciphertext: &LweCiphertext<InputCont>,
+    output_lwe_ciphertext: &mut LweCiphertext<OutputCont>,
+    // ksk_noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+    ksk_mask_vector: &Vec<Vec<PublicKeyRandomVectors<Scalar>>>,
+    plaintextlist_vector: &Vec<PlaintextListOwned<Scalar>>,
+// ) -> LweBody<Scalar>
+// ) -> (LweBody<Scalar>, Plaintext<Scalar>)
+) -> (PublicKeyRandomVectors<Scalar>, Plaintext<Scalar>)
+where
+    Scalar: UnsignedInteger,
+    KSKCont: Container<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+{
+    let ciphertext_modulus = lwe_keyswitch_key.ciphertext_modulus();
+
+    if !ciphertext_modulus.is_compatible_with_native_modulus() {
+        println!("NOT IMPLEMENTED: ciphertext_modulus NOT compatible with native modulus case");
+    }
+    keyswitch_lwe_ciphertext_native_mod_compatible_ret_mask(
+        lwe_keyswitch_key,
+        input_lwe_ciphertext,
+        output_lwe_ciphertext,
+        // ksk_noise_vector,
+        ksk_mask_vector,
+        plaintextlist_vector,
+    )
+}
+
+pub fn keyswitch_lwe_ciphertext_native_mod_compatible_ret_mask<Scalar, KSKCont, InputCont, OutputCont>(
+    lwe_keyswitch_key: &LweKeyswitchKey<KSKCont>,
+    input_lwe_ciphertext: &LweCiphertext<InputCont>,
+    output_lwe_ciphertext: &mut LweCiphertext<OutputCont>,
+    // ksk_noise_vector: &Vec<Vec<LweBody<Scalar>>>,
+    ksk_mask_vector: &Vec<Vec<PublicKeyRandomVectors<Scalar>>>,
+    plaintextlist_vector: &Vec<PlaintextListOwned<Scalar>>,
+// ) -> LweBody<Scalar>
+// ) -> (LweBody<Scalar>, Plaintext<Scalar>)
+) -> (PublicKeyRandomVectors<Scalar>, Plaintext<Scalar>)
+where
+    Scalar: UnsignedInteger,
+    KSKCont: Container<Element = Scalar>,
+    InputCont: Container<Element = Scalar>,
+    OutputCont: ContainerMut<Element = Scalar>,
+{
+    assert!(
+        lwe_keyswitch_key.input_key_lwe_dimension()
+            == input_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+        "Mismatched input LweDimension. \
+        LweKeyswitchKey input LweDimension: {:?}, input LweCiphertext LweDimension {:?}.",
+        lwe_keyswitch_key.input_key_lwe_dimension(),
+        input_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+    );
+    assert!(
+        lwe_keyswitch_key.output_key_lwe_dimension()
+            == output_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+        "Mismatched output LweDimension. \
+        LweKeyswitchKey output LweDimension: {:?}, output LweCiphertext LweDimension {:?}.",
+        lwe_keyswitch_key.output_key_lwe_dimension(),
+        output_lwe_ciphertext.lwe_size().to_lwe_dimension(),
+    );
+
+    let output_ciphertext_modulus = output_lwe_ciphertext.ciphertext_modulus();
+
+    assert_eq!(
+        lwe_keyswitch_key.ciphertext_modulus(),
+        output_ciphertext_modulus,
+        "Mismatched CiphertextModulus. \
+        LweKeyswitchKey CiphertextModulus: {:?}, output LweCiphertext CiphertextModulus {:?}.",
+        lwe_keyswitch_key.ciphertext_modulus(),
+        output_ciphertext_modulus
+    );
+    assert!(
+        output_ciphertext_modulus.is_compatible_with_native_modulus(),
+        "This operation currently only supports power of 2 moduli"
+    );
+
+    let input_ciphertext_modulus = input_lwe_ciphertext.ciphertext_modulus();
+
+    assert!(
+        input_ciphertext_modulus.is_compatible_with_native_modulus(),
+        "This operation currently only supports power of 2 moduli"
+    );
+
+    // Clear the output ciphertext, as it will get updated gradually
+    output_lwe_ciphertext.as_mut().fill(Scalar::ZERO);
+
+    let mut new_ciphertext_modulus = CiphertextModulus::<Scalar>::new_native();
+    if !output_ciphertext_modulus.is_native_modulus() {
+        new_ciphertext_modulus = CiphertextModulus::<Scalar>::new(output_ciphertext_modulus.get_custom_modulus());
+    }
+    // let mut output_lwe_ciphertext_noise = LweBody::new(Scalar::ZERO, new_ciphertext_modulus);
+    let mut output_lwe_ciphertext_mask = PublicKeyRandomVectors::new(Scalar::ZERO, ksk_mask_vector[0][0].binary_random_vector.len().try_into().unwrap());
+    let mut noisy_message = Scalar::ZERO;
+
+    // Copy the input body to the output ciphertext
+    *output_lwe_ciphertext.get_mut_body().data = *input_lwe_ciphertext.get_body().data;
+
+    // If the moduli are not the same, we need to round the body in the output ciphertext
+    if output_ciphertext_modulus != input_ciphertext_modulus
+        && !output_ciphertext_modulus.is_native_modulus()
+    {
+        let modulus_bits = output_ciphertext_modulus.get_custom_modulus().ilog2() as usize;
+        let output_decomposer = SignedDecomposer::new(
+            DecompositionBaseLog(modulus_bits),
+            DecompositionLevelCount(1),
+        );
+
+        *output_lwe_ciphertext.get_mut_body().data =
+            output_decomposer.closest_representable(*output_lwe_ciphertext.get_mut_body().data);
+    }
+    // start computing noisy message
+    noisy_message = *output_lwe_ciphertext.get_body().data;
+
+    // We instantiate a decomposer
+    let decomposer = SignedDecomposer::new(
+        lwe_keyswitch_key.decomposition_base_log(),
+        lwe_keyswitch_key.decomposition_level_count(),
+    );
+
+    for (((keyswitch_key_block, &input_mask_element), ksk_mask_chunk), plaintextlist) in lwe_keyswitch_key
+        .iter()
+        .zip(input_lwe_ciphertext.get_mask().as_ref())
+        .zip(ksk_mask_vector.iter())
+        .zip(plaintextlist_vector.iter())
+    {
+        let decomposition_iter = decomposer.decompose(input_mask_element);
+        // Loop over the levels
+        for (((level_key_ciphertext, decomposed), ksk_mask_entry), plaintext) in keyswitch_key_block
+            .iter()
+            .zip(decomposition_iter)
+            .zip(ksk_mask_chunk.iter())
+            .zip(plaintextlist.as_ref())
+        {
+            slice_wrapping_sub_scalar_mul_assign(
+                output_lwe_ciphertext.as_mut(),
+                level_key_ciphertext.as_ref(),
+                decomposed.value(),
+            );
+            // compute mask
+            slice_wrapping_sub_scalar_mul_assign(
+                &mut output_lwe_ciphertext_mask.binary_random_vector,
+                &ksk_mask_entry.binary_random_vector,
+                decomposed.value(),
+            );
+            // let tmp_val = ksk_noise_entry.data;
+            // output_lwe_ciphertext_noise.data = output_lwe_ciphertext_noise.data.wrapping_sub(
+            //     tmp_val.wrapping_mul(decomposed.value())
+            // );
+
+            // compute noisy message
+            let tmp_noisy_message = plaintext;
+            noisy_message = noisy_message.wrapping_sub(
+                tmp_noisy_message.wrapping_mul(decomposed.value())
+            );
+        }
+    }
+    (output_lwe_ciphertext_mask, Plaintext(noisy_message))
+}

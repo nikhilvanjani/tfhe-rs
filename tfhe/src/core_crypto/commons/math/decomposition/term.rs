@@ -23,7 +23,9 @@ where
     T: UnsignedInteger,
 {
     // Creates a new decomposition term.
-    pub(crate) fn new(level: DecompositionLevel, base_log: DecompositionBaseLog, value: T) -> Self {
+    // Nikhil: changed to public for access by deterministic_encryption.rs
+    pub fn new(level: DecompositionLevel, base_log: DecompositionBaseLog, value: T) -> Self {
+    // pub(crate) fn new(level: DecompositionLevel, base_log: DecompositionBaseLog, value: T) -> Self {
         Self {
             level: level.0,
             base_log: base_log.0,
