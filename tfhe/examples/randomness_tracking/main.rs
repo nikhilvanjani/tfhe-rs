@@ -12,6 +12,11 @@
 // extern crate rayon;
 // extern crate pulp;
 use std::time::Instant;
+use tfhe::shortint::ClassicPBSParameters;
+use tfhe::ConfigBuilder;
+use tfhe::generate_keys;
+use tfhe::FheUint8;
+use tfhe::prelude::*;
 
 use tfhe::core_crypto::prelude::*;
 // use tfhe::core_crypto::commons::generators::DeterministicSeeder;
@@ -26,13 +31,19 @@ use tfhe::core_crypto::prelude::slice_algorithms::slice_wrapping_add;
 
 use crate::deterministic_encryption::*;
 use crate::deterministic_lin_algebra::*;
+use crate::utils::*;
 
 const NB_TESTS: usize = 1;
 const MSG_BITS: u32 = 4;
-const ENCODING: u32 = u128::BITS - MSG_BITS;
+// const ENCODING: u32 = u128::BITS - MSG_BITS;
+const ENCODING: u32 = u64::BITS - MSG_BITS;
+
+// const BLOCK_PARAMS: ClassicPBSParameters = tfhe::shortint::prelude::PARAM_MESSAGE_2_CARRY_3_KS_PBS;
+const BLOCK_PARAMS: ClassicPBSParameters = tfhe::shortint::prelude::PARAM_MESSAGE_2_CARRY_2_KS_PBS;
 
 mod deterministic_encryption;
 mod deterministic_lin_algebra;
+mod utils;
 
 
 fn test_sk_lwe_enc() {
@@ -3324,6 +3335,124 @@ fn test_pk_pbs_full_det() {
 	}
 }
 
+fn test_save_on_file_keys(
+	client_key_path: &String,
+    server_key_path: &String,
+    output_lwe_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = ConfigBuilder::with_custom_parameters(BLOCK_PARAMS).build();
+    let (client_key, server_key) = generate_keys(config);
+
+    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    let shortint_ck = integer_ck.into_raw_parts();
+    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    let (glwe_secret_key, _, parameters) = shortint_ck.into_raw_parts();
+    let lwe_secret_key = glwe_secret_key.into_lwe_secret_key();
+
+    println!("client_key: {:?}", client_key);
+
+    // let client_key_path = dir_path.clone().push_str("/client_key");
+    // let server_key_path = dir_path.clone().push_str("/server_key");
+    // let output_lwe_path = dir_path.clone().push_str("/output_key");
+    write_keys(
+        client_key_path,
+        server_key_path,
+        output_lwe_path,
+        Some(client_key),
+        Some(server_key),
+        Some(lwe_secret_key),
+    )?;
+    Ok(())
+
+}
+
+fn test_save_on_file_encrypt(
+    // msg: u8,
+    msg: u64,
+    client_key_path: &String,
+    ciphertext_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    let client_key = load_client_key(client_key_path);
+    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    let shortint_ck = integer_ck.into_raw_parts();
+    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    let (_, lwe_secret_key, parameters) = shortint_ck.into_raw_parts();
+    let lwe_dimension = parameters.lwe_dimension();
+    let lwe_noise_distribution = parameters.lwe_noise_distribution();
+    let message_modulus = parameters.message_modulus();
+    let encoding :u32 = u64::BITS - (message_modulus.0 as u32);
+
+    // let ct = FheUint8::encrypt(msg, &client_key);
+    // serialize_fheuint8(ct, ciphertext_path);
+
+    // Create the PRNG
+    let mut seeder = new_seeder();
+    let seeder = seeder.as_mut();
+    let mut encryption_generator =
+        EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+
+    // Create the plaintext
+    let plaintext = Plaintext(msg << encoding);
+
+    // Create a new LweCiphertext
+    let mut ct = LweCiphertext::new(
+        0u64,
+        lwe_dimension.to_lwe_size(),
+        CiphertextModulus::new_native(),
+    );
+
+    encrypt_lwe_ciphertext(
+        &lwe_secret_key,
+        &mut ct,
+        plaintext,
+        lwe_noise_distribution,
+        &mut encryption_generator,
+    );
+
+    serialize_lwe_ciphertext(&ct, ciphertext_path);
+
+    Ok(())
+}
+
+fn test_load_from_file_decrypt(
+    client_key_path: &String,
+    ciphertext_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    
+    let client_key = load_client_key(client_key_path);
+    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    let shortint_ck = integer_ck.into_raw_parts();
+    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    let (_, lwe_secret_key, parameters) = shortint_ck.into_raw_parts();
+    let message_modulus = parameters.message_modulus();
+    let encoding :u32 = u64::BITS - (message_modulus.0 as u32);
+
+    // let fheuint = deserialize_fheuint8(ciphertext_path);
+    // let result: u8 = fheuint.decrypt(&client_key);
+
+    // deserialize_lwe_ciphertext::<u64>(ciphertext_path);
+    let lwe = deserialize_lwe_ciphertext(ciphertext_path);
+
+    let decrypted_plaintext = decrypt_lwe_ciphertext(&lwe_secret_key, &lwe);
+
+    // Round and remove encoding
+    // First create a decomposer working on the high 4 bits corresponding to our
+    // encoding.
+    let decomposer = SignedDecomposer::new(
+        DecompositionBaseLog(message_modulus.0 as usize),
+        DecompositionLevelCount(1),
+    );
+
+    let rounded = decomposer.closest_representable(decrypted_plaintext.0);
+
+    // Remove the encoding
+    let cleartext = rounded >> encoding;
+
+    println!("cleartext: {}", cleartext);
+
+    Ok(())
+}
 
 fn main() {
 	let args: Vec<String> = std::env::args().collect();
@@ -3475,6 +3604,29 @@ fn main() {
         test_pk_pbs_full_det();
         println!();
     }
-
+    if argument == "save_on_file_keys" {
+        println!("Testing saving keys on file");
+        let client_key_path = &args[2];
+        let server_key_path = &args[3];
+        let output_key_path = &args[4];
+        test_save_on_file_keys(client_key_path, server_key_path, output_key_path);
+        println!();
+    }
+    if argument == "save_on_file_encrypt" {
+        println!("Testing saving ciphertext on file");
+        // let value : &u8 = &args[2].parse::<u8>().expect("Argument must be a valid unsigned integer");
+        let value : &u64 = &args[2].parse::<u64>().expect("Argument must be a valid unsigned integer");
+        let client_key_path = &args[3];
+        let ciphertext_path = &args[4];
+        test_save_on_file_encrypt(*value, client_key_path, ciphertext_path);
+        println!();
+    }
+    if argument == "load_from_file_decrypt" {
+        println!("Testing loading ciphertext from file and decrpytion");
+        let client_key_path = &args[2];
+        let ciphertext_path = &args[3];
+        test_load_from_file_decrypt(client_key_path, ciphertext_path);
+        println!();
+    }
     // }
 }
