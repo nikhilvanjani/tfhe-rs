@@ -8,7 +8,7 @@ members = [
     "tasks",
     "apps/trivium",
     "tfhe-csprng",
-    "backends/tfhe-cuda-backend",
+    # "backends/tfhe-cuda-backend",
     "utils/tfhe-versionable",
     "utils/tfhe-versionable-derive",
 ]
