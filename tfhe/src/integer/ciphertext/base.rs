@@ -18,7 +18,9 @@ use tfhe_versionable::Versionize;
 #[versionize(BaseRadixCiphertextVersions)]
 pub struct BaseRadixCiphertext<Block> {
     /// The blocks are stored from LSB to MSB
-    pub(crate) blocks: Vec<Block>,
+    // Made public for use in randomness tracking
+    pub blocks: Vec<Block>,
+    // pub(crate) blocks: Vec<Block>,
 }
 
 impl<Block> From<Vec<Block>> for BaseRadixCiphertext<Block> {

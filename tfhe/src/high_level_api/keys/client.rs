@@ -13,6 +13,7 @@ use crate::shortint::MessageModulus;
 use crate::Tag;
 use tfhe_csprng::seeders::Seed;
 use tfhe_versionable::Versionize;
+use crate::core_crypto::prelude::{LweBody, PlaintextListOwned, LwePublicKeyZeroEncryptionCount, PublicKeyRandomVectors, LwePublicKeyOwned};
 
 /// Key of the client
 ///
@@ -110,7 +111,13 @@ impl ClientKey {
     /// The `ServerKey` generated is meant to be used to initialize the global state
     /// using [crate::high_level_api::set_server_key].
     pub fn generate_server_key(&self) -> ServerKey {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/client.rs: generate_server_key");
         ServerKey::new(self)
+    }
+    pub fn generate_server_key_with_public_key_ret_noise(&self) 
+    -> (ServerKey, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>) {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/client.rs: generate_server_key_with_public_key_ret_noise");
+        ServerKey::new_with_public_key_ret_noise(self)
     }
 
     /// Generates a new CompressedServerKey

@@ -14,6 +14,9 @@ use crate::shortint::{
     CiphertextModulus, ClientKey, CompressedServerKey, PBSParameters, ServerKey,
 };
 
+use crate::core_crypto::prelude::{LweBody, PlaintextListOwned, LwePublicKeyZeroEncryptionCount, PublicKeyRandomVectors, LwePublicKeyOwned};
+// use crate::deterministic_encryption::allocate_and_generate_new_lwe_keyswitch_key_with_public_key_ret_mask;
+
 impl ShortintEngine {
     pub(crate) fn new_server_key(&mut self, cks: &ClientKey) -> ServerKey {
         // Plaintext Max Value
@@ -53,6 +56,62 @@ impl ShortintEngine {
                 todo!("Currently shortint only supports grouping factor 2 and 3 for multi bit PBS")
             }
         }
+    }
+
+    pub(crate) fn new_server_key_with_max_degree_with_public_key_ret_noise(
+        &mut self,
+        cks: &ClientKey,
+        max_degree: MaxDegree,
+    // ) -> ServerKey {
+    ) -> (ServerKey, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>) {
+        let params = &cks.parameters;
+
+        let pbs_params_base = params.pbs_parameters().unwrap();
+
+        let in_key = &cks.small_lwe_secret_key();
+
+        let out_key = &cks.glwe_secret_key;
+
+        let bootstrapping_key_base = self.new_bootstrapping_key(pbs_params_base, in_key, out_key);
+
+        println!("fhe/zama_tfhe_rs/tfhe/src/shortint/engine/server_side.rs: new_server_key_with_max_degree_with_public_key_ret_noise -> allocate_and_generate_new_lwe_keyswitch_key_with_public_key_ret_mask");
+
+        let server_pk_zero_encryption_count =
+            LwePublicKeyZeroEncryptionCount(cks.small_lwe_secret_key().lwe_dimension().to_lwe_size().0 * 64 + 128);
+
+        let server_pk = allocate_and_generate_new_lwe_public_key(
+            &cks.small_lwe_secret_key(),
+            server_pk_zero_encryption_count,
+            cks.parameters.lwe_noise_distribution(),            
+            cks.parameters.ciphertext_modulus(),
+            &mut self.encryption_generator,
+        );
+        // Creation of the key switching key
+        // let key_switching_key = allocate_and_generate_new_lwe_keyswitch_key(
+        let (key_switching_key, ksk_mask_vector, msg_vector) = allocate_and_generate_new_lwe_keyswitch_key_with_public_key_ret_mask(
+            &cks.large_lwe_secret_key(),
+            &server_pk,
+            // &cks.small_lwe_secret_key(),
+            cks.parameters.ks_base_log(),
+            cks.parameters.ks_level(),
+            // cks.parameters.lwe_noise_distribution(),
+            cks.parameters.ciphertext_modulus(),
+            // &mut self.encryption_generator,
+            &mut self.secret_generator,
+        );
+
+        // Pack the keys in the server key set:
+        let server_key = ServerKey {
+            key_switching_key,
+            bootstrapping_key: bootstrapping_key_base,
+            message_modulus: cks.parameters.message_modulus(),
+            carry_modulus: cks.parameters.carry_modulus(),
+            max_degree,
+            max_noise_level: cks.parameters.max_noise_level(),
+            ciphertext_modulus: cks.parameters.ciphertext_modulus(),
+            pbs_order: cks.parameters.encryption_key_choice().into(),
+        };
+        (server_key, ksk_mask_vector, msg_vector, server_pk)
     }
 
     pub(crate) fn new_server_key_with_max_degree(
@@ -240,7 +299,7 @@ impl ShortintEngine {
                 output_client_key.parameters.lwe_noise_distribution(),
             ),
         };
-
+        println!("fhe/zama_tfhe_rs/tfhe/src/shortint/engine/server_side.rs: new_key_switching_key -> allocate_and_generate_new_lwe_keyswitch_key");
         // Creation of the key switching key
         allocate_and_generate_new_lwe_keyswitch_key(
             &input_secret_key.lwe_secret_key,

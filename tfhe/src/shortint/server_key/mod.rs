@@ -487,6 +487,13 @@ impl ServerKey {
         })
     }
 
+    pub fn new_with_max_degree_with_public_key_ret_noise(cks: &ClientKey, max_degree: MaxDegree) 
+    -> (Self, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>) {
+        ShortintEngine::with_thread_local_mut(|engine| {
+            engine.new_server_key_with_max_degree_with_public_key_ret_noise(cks, max_degree)
+        })
+    }
+
     pub fn ciphertext_lwe_dimension(&self) -> LweDimension {
         match self.pbs_order {
             PBSOrder::KeyswitchBootstrap => self.key_switching_key.input_key_lwe_dimension(),

@@ -77,6 +77,14 @@ pub fn load_client_key(client_path: &String) -> ClientKey {
     client_key
 }
 
+pub fn load_server_key(server_path: &String) -> ServerKey {
+    let path_key: &Path = Path::new(server_path);
+    let serialized_key = fs::read(path_key).unwrap();
+    let mut serialized_data = Cursor::new(serialized_key);
+    let server_key: ServerKey = bincode::deserialize_from(&mut serialized_data).unwrap();
+    server_key
+}
+
 pub fn serialize_fheuint8(fheuint: FheUint8, ciphertext_path: &String) {
     let mut serialized_ct = Vec::new();
     bincode::serialize_into(&mut serialized_ct, &fheuint).unwrap();
@@ -94,11 +102,13 @@ pub fn deserialize_fheuint8(path: &String) -> FheUint8 {
 
 pub fn serialize_lwe_ciphertext<
     Scalar, 
+    // C,
     // OutputCont, 
     // NoiseDistribution,
 > (
     // lwe_ciphertext: &LweCiphertext<OutputCont>, 
     lwe_ciphertext: &LweCiphertext<Vec<Scalar>>, 
+    // lwe_ciphertext: &LweCiphertext<C>, 
     ciphertext_path: &String
 ) where 
     // Scalar: Encryptable<Uniform, NoiseDistribution> + Serialize,
@@ -107,6 +117,7 @@ pub fn serialize_lwe_ciphertext<
     // OutputCont: Container<Element = Scalar>,
 {
     let mut serialized_ct = Vec::new();
+    // serialized_ct = lwe_ciphertext.as_ref().to_vec();
     bincode::serialize_into(&mut serialized_ct, &lwe_ciphertext).unwrap();
     let path_ct: &Path = Path::new(ciphertext_path);
     fs::write(path_ct, serialized_ct).unwrap();
@@ -137,6 +148,12 @@ where
     ct
 }
 
+pub fn load_lwe_sk(lwe_sk_path: &String) -> LweSecretKey<Vec<u64>> {
+    let path_sk: &Path = Path::new(lwe_sk_path);
+    let serialized_sk = fs::read(path_sk).unwrap();
+    let mut serialized_data = Cursor::new(serialized_sk);
+    bincode::deserialize_from(&mut serialized_data).unwrap()
+}
 
 
 

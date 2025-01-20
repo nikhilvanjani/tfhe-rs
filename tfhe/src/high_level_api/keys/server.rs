@@ -17,6 +17,7 @@ use crate::prelude::Tagged;
 use crate::shortint::MessageModulus;
 use crate::Tag;
 use std::sync::Arc;
+use crate::core_crypto::prelude::{LweBody, PlaintextListOwned, LwePublicKeyZeroEncryptionCount, PublicKeyRandomVectors, LwePublicKeyOwned};
 
 /// Key of the server
 ///
@@ -38,10 +39,22 @@ pub struct ServerKey {
 
 impl ServerKey {
     pub fn new(keys: &ClientKey) -> Self {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/server.rs: ServerKey::new");
         Self {
             key: Arc::new(IntegerServerKey::new(&keys.key)),
             tag: keys.tag.clone(),
         }
+    }
+
+    pub fn new_with_public_key_ret_noise(keys: &ClientKey) 
+    -> (Self, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>) {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/server.rs: ServerKey::new");
+        let (integer_sk, ksk_mask_vector, msg_vector, server_pk) = IntegerServerKey::new_with_public_key_ret_noise(&keys.key);
+        let server_key = Self {
+            key: Arc::new(integer_sk),
+            tag: keys.tag.clone(),
+        };
+        (server_key, ksk_mask_vector, msg_vector, server_pk)
     }
 
     pub fn into_raw_parts(

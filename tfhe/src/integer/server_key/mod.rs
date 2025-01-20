@@ -21,6 +21,7 @@ pub use radix::scalar_sub::TwosComplementNegation;
 pub use radix_parallel::{MatchValues, MiniUnsignedInteger, Reciprocable};
 use serde::{Deserialize, Serialize};
 use tfhe_versionable::Versionize;
+use crate::core_crypto::prelude::{LweBody, PlaintextListOwned, LwePublicKeyZeroEncryptionCount, PublicKeyRandomVectors, LwePublicKeyOwned};
 
 /// A structure containing the server public key.
 ///
@@ -106,6 +107,25 @@ impl ServerKey {
         );
 
         Self { key: sks }
+    }
+
+    pub fn new_radix_server_key_with_public_key_ret_noise<C>(cks: C) -> (Self, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>)
+    where
+        C: AsRef<ClientKey>,
+    {
+        // It should remain just enough space to add a carry
+        let client_key = cks.as_ref();
+        let max_degree = MaxDegree::integer_radix_server_key(
+            client_key.key.parameters.message_modulus(),
+            client_key.key.parameters.carry_modulus(),
+        );
+
+        let (sks, ksk_mask_vector, msg_vector, server_pk) = crate::shortint::server_key::ServerKey::new_with_max_degree_with_public_key_ret_noise(
+            &client_key.key,
+            max_degree,
+        );
+
+        (Self { key: sks }, ksk_mask_vector, msg_vector, server_pk)
     }
 
     pub fn new_crt_server_key<C>(cks: C) -> Self

@@ -18,6 +18,7 @@ use crate::{Config, Error};
 use serde::{Deserialize, Serialize};
 use tfhe_csprng::seeders::Seed;
 use tfhe_versionable::Versionize;
+use crate::core_crypto::prelude::{LweBody, PlaintextListOwned, LwePublicKeyZeroEncryptionCount, PublicKeyRandomVectors, LwePublicKeyOwned};
 
 // Clippy complained that fields end in _parameters, :roll_eyes:
 #[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize, Versionize)]
@@ -219,7 +220,9 @@ pub struct IntegerServerKey {
 
 impl IntegerServerKey {
     pub(in crate::high_level_api) fn new(client_key: &IntegerClientKey) -> Self {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: IntegerServerKey::new");
         let cks = &client_key.key;
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check1");
 
         let (compression_key, decompression_key) = client_key.compression_key.as_ref().map_or_else(
             || (None, None),
@@ -229,14 +232,18 @@ impl IntegerServerKey {
                 (Some(compression_key), Some(decompression_key))
             },
         );
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check2");
 
         let base_integer_key = crate::integer::ServerKey::new_radix_server_key(cks);
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check3");
+        // println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: client_key: {:?}", client_key);
 
         let cpk_key_switching_key_material =
             client_key
                 .dedicated_compact_private_key
                 .as_ref()
                 .map(|(private_key, ksk_params)| {
+                    println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: calling build_helper");
                     let build_helper =
                         crate::integer::key_switching_key::KeySwitchingKeyBuildHelper::new(
                             (private_key, None),
@@ -246,6 +253,8 @@ impl IntegerServerKey {
 
                     build_helper.into()
                 });
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check4");
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: cpk_key_switching_key_material: {:?}", cpk_key_switching_key_material);
         Self {
             key: base_integer_key,
             cpk_key_switching_key_material,
@@ -254,6 +263,51 @@ impl IntegerServerKey {
         }
     }
 
+    pub(in crate::high_level_api) fn new_with_public_key_ret_noise(client_key: &IntegerClientKey) 
+    -> (Self, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>, LwePublicKeyOwned<u64>) {
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: IntegerServerKey::new");
+        let cks = &client_key.key;
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check1");
+
+        let (compression_key, decompression_key) = client_key.compression_key.as_ref().map_or_else(
+            || (None, None),
+            |a| {
+                let (compression_key, decompression_key) =
+                    cks.new_compression_decompression_keys(a);
+                (Some(compression_key), Some(decompression_key))
+            },
+        );
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check2");
+
+        let (base_integer_key, ksk_mask_vector, msg_vector, server_pk) = crate::integer::ServerKey::new_radix_server_key_with_public_key_ret_noise(cks);
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check3");
+        // println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: client_key: {:?}", client_key);
+
+        let cpk_key_switching_key_material =
+            client_key
+                .dedicated_compact_private_key
+                .as_ref()
+                .map(|(private_key, ksk_params)| {
+                    println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: calling build_helper");
+                    let build_helper =
+                        crate::integer::key_switching_key::KeySwitchingKeyBuildHelper::new(
+                            (private_key, None),
+                            (cks, &base_integer_key),
+                            *ksk_params,
+                        );
+
+                    build_helper.into()
+                });
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: check4");
+        println!("fhe/zama_tfhe_rs/tfhe/src/high_level_api/keys/inner.rs: cpk_key_switching_key_material: {:?}", cpk_key_switching_key_material);
+        let integer_sk = Self {
+            key: base_integer_key,
+            cpk_key_switching_key_material,
+            compression_key,
+            decompression_key,
+        };
+        (integer_sk, ksk_mask_vector, msg_vector, server_pk)
+    }
     pub(in crate::high_level_api) fn pbs_key(&self) -> &crate::integer::ServerKey {
         &self.key
     }

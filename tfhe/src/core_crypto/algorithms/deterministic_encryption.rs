@@ -1,28 +1,28 @@
 #![allow(unused_imports)]
 
-use tfhe::core_crypto::algorithms::slice_algorithms::*;
-use tfhe::core_crypto::algorithms::*;
-use tfhe::core_crypto::commons::ciphertext_modulus::CiphertextModulusKind;
-use tfhe::core_crypto::commons::generators::{EncryptionRandomGenerator, SecretRandomGenerator};
+use crate::core_crypto::algorithms::slice_algorithms::*;
+use crate::core_crypto::algorithms::*;
+use crate::core_crypto::commons::ciphertext_modulus::CiphertextModulusKind;
+use crate::core_crypto::commons::generators::{EncryptionRandomGenerator, SecretRandomGenerator};
 #[cfg(feature = "zk-pok")]
-use tfhe::core_crypto::commons::math::random::BoundedDistribution;
-use tfhe::core_crypto::commons::math::random::{
+use crate::core_crypto::commons::math::random::BoundedDistribution;
+use crate::core_crypto::commons::math::random::{
     DefaultRandomGenerator, Distribution, RandomGenerable, RandomGenerator, Uniform, UniformBinary,
 };
-use tfhe::core_crypto::commons::parameters::*;
-use tfhe::core_crypto::commons::traits::*;
-use tfhe::core_crypto::entities::*;
+use crate::core_crypto::commons::parameters::*;
+use crate::core_crypto::commons::traits::*;
+use crate::core_crypto::entities::*;
 use rayon::prelude::*;
 use pulp::Scalar;
 
-use tfhe::core_crypto::commons::math::decomposition::{
+use crate::core_crypto::commons::math::decomposition::{
     DecompositionLevel, DecompositionTerm, DecompositionTermNonNative, SignedDecomposer,
 };
-use tfhe::core_crypto::algorithms::*;
-use tfhe::core_crypto::algorithms::polynomial_algorithms::*;
+use crate::core_crypto::algorithms::*;
+use crate::core_crypto::algorithms::polynomial_algorithms::*;
 use tfhe_fft::c64;
-use tfhe::core_crypto::prelude::ComputationBuffers;
-use tfhe::core_crypto::fft_impl::fft64::math::fft::{Fft, FftView};
+use crate::core_crypto::prelude::ComputationBuffers;
+use crate::core_crypto::fft_impl::fft64::math::fft::{Fft, FftView};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 
 
@@ -2888,6 +2888,7 @@ where
 /// the encryption of a lwe ciphertext or lwe compact ciphertext list.
 ///
 /// These are needed by the zero-knowledge proof
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PublicKeyRandomVectors<Scalar> {
 // pub struct PublicKeyRandomVectors<Scalar: Encryptable<Uniform, dyn Distribution>> {
     pub binary_random_vector: Vec<Scalar>,
@@ -3537,7 +3538,7 @@ where
         .zip(gen_iter)
         .zip(mask_vector.par_iter_mut())
         .zip(decomposition_plaintexts_buffer_vector.par_iter_mut())
-        .for_each(|((((input_key_element, mut keyswitch_key_block), mut generator), mask_chunk), decomposition_plaintexts_buffer)| {
+        .for_each(|((((input_key_element, mut keyswitch_key_block), mut generator), mut mask_chunk), decomposition_plaintexts_buffer)| {
 
             // We fill the buffer with the powers of the key elements
             for (level, message) in (1..=decomp_level_count.0)
@@ -3553,12 +3554,20 @@ where
                     .wrapping_div(ciphertext_modulus.get_power_of_two_scaling_to_native_torus());
             }
 
-            *mask_chunk = par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask(
-                output_lwe_pk,
+            // *mask_chunk = par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask(
+            //     output_lwe_pk,
+            //     &mut keyswitch_key_block,
+            //     &decomposition_plaintexts_buffer,
+            //     &mut generator,
+            // );
+            par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask(
+                &output_lwe_pk.clone(),
                 &mut keyswitch_key_block,
                 &decomposition_plaintexts_buffer,
                 &mut generator,
+                &mut mask_chunk,
             );
+
         });
 
     (mask_vector, decomposition_plaintexts_buffer_vector)
@@ -3575,9 +3584,10 @@ pub fn par_encrypt_lwe_ciphertext_list_with_public_key_ret_mask<
     output: &mut LweCiphertextList<OutputCont>,
     encoded: &PlaintextList<InputCont>,
     generator: &mut SecretRandomGenerator<Gen>,
-// ) 
+    mask_vector: &mut Vec<PublicKeyRandomVectors<Scalar>>,
+) 
 // ) -> Vec<LweMask<Vec<Scalar>>>
-) -> Vec<PublicKeyRandomVectors<Scalar>>
+// ) -> Vec<PublicKeyRandomVectors<Scalar>>
 where
     Scalar: UnsignedTorus + Sync,
     KeyCont: Container<Element = Scalar> + Sync,
@@ -3610,10 +3620,10 @@ where
     //         new_ciphertext_modulus);
     //     output.lwe_ciphertext_count().0
     // ];
-    let mut mask_vector = vec![
-        PublicKeyRandomVectors::new(Scalar::ZERO, lwe_public_key.zero_encryption_count().0.try_into().unwrap());
-        output.lwe_ciphertext_count().0
-    ];
+    // let mut mask_vector = vec![
+    //     PublicKeyRandomVectors::new(Scalar::ZERO, lwe_public_key.zero_encryption_count().0.try_into().unwrap());
+    //     output.lwe_ciphertext_count().0
+    // ];
 
     encoded
         .par_iter()
@@ -3622,7 +3632,7 @@ where
         .zip(mask_vector.par_iter_mut())
         .for_each(|(((encoded_plaintext_ref, mut ciphertext), mut generator), mask_entry)| {
             let tmp_mask_entry = encrypt_lwe_ciphertext_with_public_key_ret_mask(
-                lwe_public_key,
+                &lwe_public_key.clone(),
                 &mut ciphertext,
                 encoded_plaintext_ref.into(),
                 &mut generator,
@@ -3630,7 +3640,7 @@ where
             mask_entry.binary_random_vector = tmp_mask_entry.binary_random_vector;
         });
 
-    mask_vector
+    // mask_vector
 }
 
 pub fn allocate_and_generate_new_lwe_keyswitch_key_with_public_key_deterministic<
@@ -4050,19 +4060,3 @@ where
     }
     (output_lwe_ciphertext_mask, Plaintext(noisy_message))
 }
-
-///////////////////
-// client server algorithms 
-///////////////////
-
-pub fn generate_keys_with_public_key_ret_noise<C: Into<Config>>(config: C) -> (ClientKey, ServerKey, Vec<Vec<PublicKeyRandomVectors<u64>>>, Vec<PlaintextListOwned<u64>>) {
-    let client_kc = ClientKey::generate(config);
-    let (server_kc, ksk_mask_vector, msg_vector) = client_kc.generate_server_key_with_public_key_ret_noise();
-
-    (client_kc, server_kc, ksk_mask_vector, msg_vector)
-}
-
-
-
-
-

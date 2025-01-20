@@ -55,7 +55,7 @@ pub use integers::{CompressedFheInt, CompressedFheUint, FheInt, FheUint, Integer
 #[cfg(feature = "gpu")]
 pub use keys::CudaServerKey;
 pub use keys::{
-    generate_keys, ClientKey, CompactPublicKey, CompressedCompactPublicKey, CompressedPublicKey,
+    generate_keys, generate_keys_with_public_key_ret_noise, ClientKey, CompactPublicKey, CompressedCompactPublicKey, CompressedPublicKey,
     CompressedServerKey, KeySwitchingKey, PublicKey, ServerKey,
 };
 

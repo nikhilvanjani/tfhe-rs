@@ -30,6 +30,7 @@ impl<'keys> KeySwitchingKeyBuildHelper<'keys> {
     where
         InputEncryptionKey: Into<SecretEncryptionKeyView<'input_key>>,
     {
+        println!("fhe/zama_tfhe_rs/tfhe/src/integer/key_switching_key/mod.rs: KeySwitchingKeyBuildHelper::new");
         let (secret_key, src_sks) = input_key_pair;
         let secret_key: SecretEncryptionKeyView<'_> = secret_key.into();
 

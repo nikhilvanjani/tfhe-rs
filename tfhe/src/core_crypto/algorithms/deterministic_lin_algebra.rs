@@ -1,21 +1,21 @@
 #![allow(unused_imports)]
 
-use tfhe::core_crypto::algorithms::slice_algorithms::*;
-use tfhe::core_crypto::algorithms::*;
-use tfhe::core_crypto::commons::ciphertext_modulus::CiphertextModulusKind;
-use tfhe::core_crypto::commons::generators::{EncryptionRandomGenerator, SecretRandomGenerator};
+use crate::core_crypto::algorithms::slice_algorithms::*;
+use crate::core_crypto::algorithms::*;
+use crate::core_crypto::commons::ciphertext_modulus::CiphertextModulusKind;
+use crate::core_crypto::commons::generators::{EncryptionRandomGenerator, SecretRandomGenerator};
 #[cfg(feature = "zk-pok")]
-use tfhe::core_crypto::commons::math::random::BoundedDistribution;
-use tfhe::core_crypto::commons::math::random::{
+use crate::core_crypto::commons::math::random::BoundedDistribution;
+use crate::core_crypto::commons::math::random::{
     DefaultRandomGenerator, Distribution, RandomGenerable, RandomGenerator, Uniform, UniformBinary,
 };
-use tfhe::core_crypto::commons::parameters::*;
-use tfhe::core_crypto::commons::traits::*;
-use tfhe::core_crypto::entities::*;
+use crate::core_crypto::commons::parameters::*;
+use crate::core_crypto::commons::traits::*;
+use crate::core_crypto::entities::*;
 use rayon::prelude::*;
 use pulp::Scalar;
 
-// use crate::deterministic_encryption::*;
+// use crate::core_crypto::algorithms::deterministic_encryption::*;
 
 
 pub fn lwe_ciphertext_add_pk_random_vectors<Scalar>(

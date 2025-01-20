@@ -14,8 +14,7 @@
 use std::time::Instant;
 use tfhe::shortint::ClassicPBSParameters;
 use tfhe::ConfigBuilder;
-use tfhe::generate_keys;
-use tfhe::FheUint8;
+use tfhe::{generate_keys, generate_keys_with_public_key_ret_noise, set_server_key, ClientKey, FheUint8, ServerKey, Tag};
 use tfhe::prelude::*;
 
 use tfhe::core_crypto::prelude::*;
@@ -29,9 +28,13 @@ use rand::Rng;
 use tfhe::safe_serialization::safe_serialize;
 use tfhe::core_crypto::prelude::slice_algorithms::slice_wrapping_add;
 
-use crate::deterministic_encryption::*;
-use crate::deterministic_lin_algebra::*;
+// use tfhe::core_crypto::algorithms::*;
+// use crate::deterministic_encryption::*;
+// use crate::deterministic_lin_algebra::*;
 use crate::utils::*;
+use tfhe::shortint::parameters::PARAM_MESSAGE_2_CARRY_3_KS_PBS_GAUSSIAN_2M64;
+use tfhe::integer::RadixCiphertext;
+use tfhe::integer::block_decomposition::{BlockRecomposer, RecomposableFrom};
 
 const NB_TESTS: usize = 1;
 const MSG_BITS: u32 = 4;
@@ -39,7 +42,8 @@ const MSG_BITS: u32 = 4;
 const ENCODING: u32 = u64::BITS - MSG_BITS;
 
 // const BLOCK_PARAMS: ClassicPBSParameters = tfhe::shortint::prelude::PARAM_MESSAGE_2_CARRY_3_KS_PBS;
-const BLOCK_PARAMS: ClassicPBSParameters = tfhe::shortint::prelude::PARAM_MESSAGE_2_CARRY_2_KS_PBS;
+const BLOCK_PARAMS: ClassicPBSParameters = PARAM_MESSAGE_2_CARRY_3_KS_PBS_GAUSSIAN_2M64;
+// const BLOCK_PARAMS: ClassicPBSParameters = tfhe::shortint::prelude::PARAM_MESSAGE_2_CARRY_2_KS_PBS;
 
 mod deterministic_encryption;
 mod deterministic_lin_algebra;
@@ -3335,13 +3339,14 @@ fn test_pk_pbs_full_det() {
 	}
 }
 
-fn test_save_on_file_keys(
+fn test_save_on_file_keygen(
 	client_key_path: &String,
     server_key_path: &String,
     output_lwe_path: &String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = ConfigBuilder::with_custom_parameters(BLOCK_PARAMS).build();
-    let (client_key, server_key) = generate_keys(config);
+    // let (client_key, server_key) = generate_keys(config);
+    let (client_key, server_key, ksk_mask_vector, msg_vector) = generate_keys_with_public_key_ret_noise(config);
 
     let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
     let shortint_ck = integer_ck.into_raw_parts();
@@ -3366,6 +3371,75 @@ fn test_save_on_file_keys(
 
 }
 
+fn keygen_from_lwe(lwe_sk_path: &String) -> ClientKey {
+    let lwe_sk = load_lwe_sk(lwe_sk_path);
+
+    let shortint_key =
+        tfhe::shortint::ClientKey::try_from_lwe_encryption_key(lwe_sk, BLOCK_PARAMS).unwrap();
+    // let client_key = ClientKey::from_raw_parts(shortint_key.into(), None, None);
+    let client_key = ClientKey::from_raw_parts(shortint_key.into(), None, None, Tag::default());
+    client_key
+}
+
+fn test_save_on_file_partial_keygen(
+	client_key_path: &String,
+    server_key_path: &String,
+    output_lwe_path: &String,
+    concrete_sk_lwe_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = ConfigBuilder::with_custom_parameters(BLOCK_PARAMS).build();
+	println!("config: {:?}", config);
+
+    let client_key = keygen_from_lwe(concrete_sk_lwe_path);
+
+    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    let shortint_ck = integer_ck.into_raw_parts();
+    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    let (glwe_secret_key, lwe_secret_key, parameters) = shortint_ck.into_raw_parts();
+    // println!("glwe_secret_key: {:?}", glwe_secret_key);
+    // println!("lwe_secret_key: {:?}", lwe_secret_key);
+
+    // let server_key = client_key.generate_server_key();
+    let (server_key, ksk_mask_vector, msg_vector) = client_key.generate_server_key_with_public_key_ret_noise();
+    // println!("ksk_mask_vector: {}", ksk_mask_vector);
+    println!("msg_vector: {:?}", msg_vector);
+    let lwe_secret_key = load_lwe_sk(concrete_sk_lwe_path);
+    write_keys(
+        client_key_path,
+        server_key_path,
+        output_lwe_path,
+        Some(client_key),
+        Some(server_key),
+        Some(lwe_secret_key),
+    )?;
+    Ok(())
+
+}
+
+fn parse_ct(ct: &FheUint8) -> RadixCiphertext {
+    let (ct_radix, ct_id, ct_tag) = ct.clone().into_raw_parts();
+    // println!("ct_radix: {:?}", ct_radix);
+    // println!("ct_id: {:?}", ct_id);
+    // println!("ct_tag: {:?}", ct_tag);
+    // let ct_radix_blocks = ct_radix.blocks;
+    // let ct_rand_blocks_len = ct_radix_blocks.len();
+    // println!("ct_radix_blocks_len: {:?}", ct_rand_blocks_len);
+    // for ct_radix_block in ct_radix_blocks.iter() {
+	//     println!("ct_radix_block: {:?}", ct_radix_block);
+	//     let ct_radix_block_ct = &ct_radix_block.ct;
+	//     let ct_radix_block_degree = ct_radix_block.degree;
+	//     let ct_radix_block_message_modulus = ct_radix_block.message_modulus;
+	//     let ct_radix_block_carry_modulus = ct_radix_block.carry_modulus;
+	//     let ct_radix_block_pbs_order = ct_radix_block.pbs_order;
+	//     println!("ct_radix_block_ct: {:?}", ct_radix_block_ct);
+	//     println!("ct_radix_block_degree: {:?}", ct_radix_block_degree);
+	//     println!("ct_radix_block_message_modulus: {:?}", ct_radix_block_message_modulus);
+	//     println!("ct_radix_block_carry_modulus: {:?}", ct_radix_block_carry_modulus);
+	//     println!("ct_radix_block_pbs_order: {:?}", ct_radix_block_pbs_order);
+    // }
+    ct_radix
+}
+
 fn test_save_on_file_encrypt(
     // msg: u8,
     msg: u64,
@@ -3383,34 +3457,36 @@ fn test_save_on_file_encrypt(
     let message_modulus = parameters.message_modulus();
     let encoding :u32 = u64::BITS - (message_modulus.0 as u32);
 
-    // let ct = FheUint8::encrypt(msg, &client_key);
-    // serialize_fheuint8(ct, ciphertext_path);
+    let ct = FheUint8::encrypt(msg, &client_key);
+    // parse_ct(&ct);
+    serialize_fheuint8(ct, ciphertext_path);
 
-    // Create the PRNG
-    let mut seeder = new_seeder();
-    let seeder = seeder.as_mut();
-    let mut encryption_generator =
-        EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
+    // // Create the PRNG
+    // let mut seeder = new_seeder();
+    // let seeder = seeder.as_mut();
+    // let mut encryption_generator =
+    //     EncryptionRandomGenerator::<DefaultRandomGenerator>::new(seeder.seed(), seeder);
 
-    // Create the plaintext
-    let plaintext = Plaintext(msg << encoding);
+    // // Create the plaintext
+    // let plaintext = Plaintext(msg << encoding);
 
-    // Create a new LweCiphertext
-    let mut ct = LweCiphertext::new(
-        0u64,
-        lwe_dimension.to_lwe_size(),
-        CiphertextModulus::new_native(),
-    );
+    // // Create a new LweCiphertext
+    // let mut ct = LweCiphertext::new(
+    //     0u64,
+    //     lwe_dimension.to_lwe_size(),
+    //     CiphertextModulus::new_native(),
+    // );
 
-    encrypt_lwe_ciphertext(
-        &lwe_secret_key,
-        &mut ct,
-        plaintext,
-        lwe_noise_distribution,
-        &mut encryption_generator,
-    );
+    // encrypt_lwe_ciphertext(
+    //     &lwe_secret_key,
+    //     &mut ct,
+    //     plaintext,
+    //     lwe_noise_distribution,
+    //     &mut encryption_generator,
+    // );
+    // println!("ct: {:?}", ct);
 
-    serialize_lwe_ciphertext(&ct, ciphertext_path);
+    // serialize_lwe_ciphertext(&ct, ciphertext_path);
 
     Ok(())
 }
@@ -3421,39 +3497,138 @@ fn test_load_from_file_decrypt(
 ) -> Result<(), Box<dyn std::error::Error>> {
     
     let client_key = load_client_key(client_key_path);
-    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
-    let shortint_ck = integer_ck.into_raw_parts();
-    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
-    let (_, lwe_secret_key, parameters) = shortint_ck.into_raw_parts();
-    let message_modulus = parameters.message_modulus();
-    let encoding :u32 = u64::BITS - (message_modulus.0 as u32);
 
-    // let fheuint = deserialize_fheuint8(ciphertext_path);
-    // let result: u8 = fheuint.decrypt(&client_key);
-
-    // deserialize_lwe_ciphertext::<u64>(ciphertext_path);
-    let lwe = deserialize_lwe_ciphertext(ciphertext_path);
-
-    let decrypted_plaintext = decrypt_lwe_ciphertext(&lwe_secret_key, &lwe);
-
-    // Round and remove encoding
-    // First create a decomposer working on the high 4 bits corresponding to our
-    // encoding.
-    let decomposer = SignedDecomposer::new(
-        DecompositionBaseLog(message_modulus.0 as usize),
-        DecompositionLevelCount(1),
-    );
-
-    let rounded = decomposer.closest_representable(decrypted_plaintext.0);
-
-    // Remove the encoding
-    let cleartext = rounded >> encoding;
-
-    println!("cleartext: {}", cleartext);
+    let fheuint = deserialize_fheuint8(ciphertext_path);
+    let result: u8 = fheuint.decrypt(&client_key);
+    println!("result: {}", result);
 
     Ok(())
 }
 
+fn test_load_from_file_decrypt_unwrapped<T>(
+    client_key_path: &String,
+    ciphertext_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> 
+where 
+	T: RecomposableFrom<u64> + UnsignedNumeric
+{
+    
+    let client_key = load_client_key(client_key_path);
+
+    let fheuint = deserialize_fheuint8(ciphertext_path);
+
+    println!("Decryption unwrapped");
+    let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    let shortint_ck = integer_ck.into_raw_parts();
+    assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    let (glwe_secret_key, lwe_secret_key, parameters) = shortint_ck.clone().into_raw_parts();
+    let message_modulus = parameters.message_modulus();
+    let carry_modulus = parameters.carry_modulus();
+    let encoding :u32 = u64::BITS - ((message_modulus.0.ilog2() + carry_modulus.0.ilog2()) as u32);
+    let radix_ct = parse_ct(&fheuint);
+
+    let bits_in_block = message_modulus.0.ilog2();
+    let mut recomposer = BlockRecomposer::<T>::new(bits_in_block);
+
+    for encrypted_block in radix_ct.blocks.iter() {
+
+        // let decrypted_block = tfhe::shortint::ClientKey::decrypt_message_and_carry(&shortint_ck, encrypted_block);
+        // let decrypted_u64: u64 = tfhe::shortint::ClientKey::decrypt_no_decode(&shortint_ck, encrypted_block);
+        let lwe_decryption_key = match encrypted_block.pbs_order {
+            PBSOrder::KeyswitchBootstrap => glwe_secret_key.as_lwe_secret_key(),
+            PBSOrder::BootstrapKeyswitch => lwe_secret_key.as_view(),
+        };
+        let decrypted_u64: u64 = decrypt_lwe_ciphertext(&lwe_decryption_key, &encrypted_block.ct).0;
+
+        let delta = (1_u64 << 63)
+            / (parameters.message_modulus().0 * parameters.carry_modulus().0);
+
+        //The bit before the message
+        let rounding_bit = delta >> 1;
+
+        //compute the rounding bit
+        let rounding = (decrypted_u64 & rounding_bit) << 1;
+
+        let decrypted_block = (decrypted_u64.wrapping_add(rounding)) / delta;
+    	
+    	println!("decrypted_block: {:?}", decrypted_block);
+        if !recomposer.add_unmasked(decrypted_block) {
+            // End of T::BITS reached no need to try more
+            // recomposition
+            break;
+        };
+    }
+
+    let cleartext = recomposer.value();
+    println!("cleartext: {:?}", cleartext);
+
+    Ok(())
+}
+
+// fn test_load_from_file_recrypt<T>(
+fn test_load_from_file_recrypt(
+    server_key_path: &String,
+    ciphertext_path: &String,
+) -> Result<(), Box<dyn std::error::Error>> 
+// where 
+// 	T: RecomposableFrom<u64> + UnsignedNumeric
+{
+    
+    let server_key = load_server_key(server_key_path);
+    let (integer_sk, _, _, _, _) = server_key.into_raw_parts();
+    let shortint_sk = integer_sk.into_raw_parts();
+    let ksk = shortint_sk.key_switching_key;
+    // println!("ksk: {:?}", ksk);
+
+    let fheuint = deserialize_fheuint8(ciphertext_path);
+
+    println!("Testing recryption");
+    // let (integer_ck, _, _, _) = client_key.clone().into_raw_parts();
+    // let shortint_ck = integer_ck.into_raw_parts();
+    // assert!(BLOCK_PARAMS.encryption_key_choice == EncryptionKeyChoice::Big);
+    // let (glwe_secret_key, lwe_secret_key, parameters) = shortint_ck.clone().into_raw_parts();
+    // let message_modulus = parameters.message_modulus();
+    // let carry_modulus = parameters.carry_modulus();
+    // let encoding :u32 = u64::BITS - ((message_modulus.0.ilog2() + carry_modulus.0.ilog2()) as u32);
+    let radix_ct = parse_ct(&fheuint);
+
+    // let bits_in_block = message_modulus.0.ilog2();
+    // let mut recomposer = BlockRecomposer::<T>::new(bits_in_block);
+
+    for encrypted_block in radix_ct.blocks.iter() {
+
+    //     // let decrypted_block = tfhe::shortint::ClientKey::decrypt_message_and_carry(&shortint_ck, encrypted_block);
+    //     // let decrypted_u64: u64 = tfhe::shortint::ClientKey::decrypt_no_decode(&shortint_ck, encrypted_block);
+    //     let lwe_decryption_key = match encrypted_block.pbs_order {
+    //         PBSOrder::KeyswitchBootstrap => glwe_secret_key.as_lwe_secret_key(),
+    //         PBSOrder::BootstrapKeyswitch => lwe_secret_key.as_view(),
+    //     };
+    //     let decrypted_u64: u64 = decrypt_lwe_ciphertext(&lwe_decryption_key, &encrypted_block.ct).0;
+
+    //     let delta = (1_u64 << 63)
+    //         / (parameters.message_modulus().0 * parameters.carry_modulus().0);
+
+    //     //The bit before the message
+    //     let rounding_bit = delta >> 1;
+
+    //     //compute the rounding bit
+    //     let rounding = (decrypted_u64 & rounding_bit) << 1;
+
+    //     let decrypted_block = (decrypted_u64.wrapping_add(rounding)) / delta;
+    	
+    // 	println!("decrypted_block: {:?}", decrypted_block);
+    //     if !recomposer.add_unmasked(decrypted_block) {
+    //         // End of T::BITS reached no need to try more
+    //         // recomposition
+    //         break;
+    //     };
+    }
+
+    // let cleartext = recomposer.value();
+    // println!("cleartext: {:?}", cleartext);
+
+    Ok(())
+}
 fn main() {
 	let args: Vec<String> = std::env::args().collect();
 	let argument = &args[1];
@@ -3604,12 +3779,21 @@ fn main() {
         test_pk_pbs_full_det();
         println!();
     }
-    if argument == "save_on_file_keys" {
-        println!("Testing saving keys on file");
+    if argument == "save_on_file_keygen" {
+        println!("Testing generating and saving keys on file");
         let client_key_path = &args[2];
         let server_key_path = &args[3];
         let output_key_path = &args[4];
-        test_save_on_file_keys(client_key_path, server_key_path, output_key_path);
+        test_save_on_file_keygen(client_key_path, server_key_path, output_key_path);
+        println!();
+    }
+    if argument == "save_on_file_partial_keygen" {
+        println!("Testing generating partial keys and saving keys on file");
+        let client_key_path = &args[2];
+        let server_key_path = &args[3];
+        let output_key_path = &args[4];
+        let concrete_key_path = &args[5];
+        test_save_on_file_partial_keygen(client_key_path, server_key_path, output_key_path, concrete_key_path);
         println!();
     }
     if argument == "save_on_file_encrypt" {
@@ -3628,5 +3812,20 @@ fn main() {
         test_load_from_file_decrypt(client_key_path, ciphertext_path);
         println!();
     }
+    if argument == "load_from_file_decrypt_unwrapped" {
+        println!("Testing loading ciphertext from file and decryption unwrapped");
+        let client_key_path = &args[2];
+        let ciphertext_path = &args[3];
+        test_load_from_file_decrypt_unwrapped::<u64>(client_key_path, ciphertext_path);
+        println!();
+    }
+    if argument == "load_from_file_recrypt" {
+        println!("Testing loading ciphertext from file and recryption");
+        let server_key_path = &args[2];
+        let ciphertext_path = &args[3];
+        test_load_from_file_recrypt(server_key_path, ciphertext_path);
+        println!();
+    }
+
     // }
 }
