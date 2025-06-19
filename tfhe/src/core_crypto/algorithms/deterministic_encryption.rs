@@ -2903,7 +2903,7 @@ impl<Scalar: Clone> Clone for PublicKeyRandomVectors<Scalar> {
 }
 
 impl <Scalar: UnsignedInteger> PublicKeyRandomVectors<Scalar> {
-    fn new(init_val: Scalar, length: u64) -> Self {
+    pub fn new(init_val: Scalar, length: u64) -> Self {
         PublicKeyRandomVectors {
             binary_random_vector : vec![init_val; length.try_into().unwrap()]
         }
