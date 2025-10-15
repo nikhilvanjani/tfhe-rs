@@ -96,7 +96,9 @@ pub(crate) type ClearRadixBlockIterator<T> = std::iter::Take<
     std::iter::Chain<std::iter::Map<BlockDecomposer<T>, fn(T) -> u64>, std::iter::Repeat<u64>>,
 >;
 
-pub(crate) fn create_clear_radix_block_iterator<T>(
+// Made public for use by randomness_tracking
+pub fn create_clear_radix_block_iterator<T>(
+// pub(crate) fn create_clear_radix_block_iterator<T>(
     message: T,
     message_modulus: MessageModulus,
     num_blocks: usize,
