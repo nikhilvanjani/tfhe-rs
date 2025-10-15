@@ -2970,7 +2970,7 @@ pub fn encrypt_lwe_ciphertext_with_public_key_deterministic<Scalar, KeyCont, Out
     lwe_public_key: &LwePublicKey<KeyCont>,
     output: &mut LweCiphertext<OutputCont>,
     encoded: Plaintext<Scalar>,
-    mask: Vec<Scalar>,
+    mask: &Vec<Scalar>,
 )
 where
     Scalar: UnsignedTorus,
@@ -3894,7 +3894,8 @@ where
                 &mut ciphertext,
                 encoded_plaintext_ref.into(),
                 // &mut generator,
-                mask_entry.binary_random_vector.clone(),
+                &mask_entry.binary_random_vector,
+                // mask_entry.binary_random_vector.clone(),
             );
         });
 }
